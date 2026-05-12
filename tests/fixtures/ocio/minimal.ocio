@@ -1,0 +1,33 @@
+ocio_profile_version: 2
+name: forge-io-minimal-test
+
+search_path: ""
+strictparsing: true
+
+roles:
+  reference: linear
+  default: linear
+  scene_linear: linear
+  scene_reference: linear
+
+colorspaces:
+  - !<ColorSpace>
+    name: linear
+    family: lin
+    equalitygroup: ""
+    bitdepth: 32f
+    description: Scene-linear reference
+    isdata: false
+
+  - !<ColorSpace>
+    name: sRGB - Display
+    family: display
+    equalitygroup: ""
+    bitdepth: 32f
+    description: Display via exponent-with-linear from scene linear
+    isdata: false
+    from_scene_reference: !<GroupTransform>
+      children:
+        - !<ExponentWithLinearTransform>
+          gamma: [2.4, 2.4, 2.4, 1.0]
+          offset: [0.055, 0.055, 0.055, 0.0]
