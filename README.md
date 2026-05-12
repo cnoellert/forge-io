@@ -78,6 +78,8 @@ Where the canonical OCIO config lives (per-project vs machine vs repo) is an **o
 
 EXR, DPX, PNG, JPEG, TIFF via OIIO.
 
+**ARRIRAW (`.ari`):** a reader is **registered** (before OIIO in the dispatch list) but decode is **not implemented** — `read` / `read_metadata` raise **`ArriSdkUnavailableError`** until the ARRI Image SDK is integrated. The SDK does not ship in the wheel; facility installs apply.
+
 ### §8 CI
 
 GitHub Actions uses a **pinned** [ASWF `ci-vfxall`](https://github.com/AcademySoftwareFoundation/aswf-docker) image so OIIO + OCIO match VFX expectations. Bump the tag deliberately when upgrading.

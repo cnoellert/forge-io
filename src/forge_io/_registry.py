@@ -6,9 +6,10 @@ from pathlib import Path
 
 from forge_io.exceptions import UnsupportedFileError
 from forge_io.readers._base import Reader
+from forge_io.readers.arri_reader import ArriRawReader
 from forge_io.readers.oiio_reader import OIIOReader
 
-_READERS: list[Reader] = sorted([OIIOReader()], key=lambda r: r.priority)
+_READERS: list[Reader] = sorted([ArriRawReader(), OIIOReader()], key=lambda r: r.priority)
 
 
 def get_reader(path: Path) -> Reader:

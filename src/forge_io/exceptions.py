@@ -25,6 +25,10 @@ class UnsupportedFileError(ForgeIOError):
     """No registered reader accepts this path."""
 
 
+class ArriSdkUnavailableError(ForgeIOError):
+    """ARRIRAW decode was requested but the ARRI Image SDK is not available or not wired."""
+
+
 class ImageDecodeError(ForgeIOError):
     """Pixel decode failed or the file does not match the expected layout."""
 
