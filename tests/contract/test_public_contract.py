@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -64,6 +65,42 @@ def test_exr_ambiguous_two_allowlisted_layers(tmp_path: Path) -> None:
     assert buf.write(str(path))
     with pytest.raises(AmbiguousExrError):
         read(path)
+
+
+def test_exr_ambiguous_two_subimages_each_rgb(tmp_path: Path) -> None:
+    """§3: more than one (subimage, beauty triple) across the file → AmbiguousExrError."""
+    oiiotool = shutil.which("oiiotool")
+    if oiiotool is None:
+        pytest.skip("oiiotool not on PATH (required to assemble multi-subimage EXR)")
+
+    import OpenImageIO as oiio
+
+    w, h = 2, 2
+    spec = oiio.ImageSpec(w, h, 3, oiio.FLOAT)
+    spec.channelnames = ("R", "G", "B")
+    arr = np.zeros((h, w, 3), dtype=np.float32)
+    part0 = tmp_path / "part0.exr"
+    part1 = tmp_path / "part1.exr"
+    out_path = tmp_path / "two_subimages_rgb.exr"
+    for p in (part0, part1):
+        buf = oiio.ImageBuf(spec)
+        buf.set_pixels(oiio.ROI(0, w, 0, h, 0, 1, 0, 3), arr)
+        assert buf.write(str(p))
+
+    subprocess.run(
+        [oiiotool, str(part0), str(part1), "--siappend", "-o", str(out_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    with pytest.raises(AmbiguousExrError) as ei:
+        read(out_path)
+    assert "2 candidates" in str(ei.value)
+
+    with pytest.raises(AmbiguousExrError) as ei2:
+        read_metadata(out_path)
+    assert "2 candidates" in str(ei2.value)
 
 
 def test_exr_happy_path_and_metadata_no_decode_pixels(fixtures_dir: Path, tmp_path: Path) -> None:
