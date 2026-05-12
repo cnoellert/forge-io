@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling>=1.21.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "forge-io"
+version = "0.1.0"
+description = "Shared read-only imaging for Forge: OIIO pixels, optional OCIO, stable contracts."
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = { text = "Proprietary" }
+authors = [{ name = "Forge" }]
+dependencies = [
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+    "OpenImageIO>=2.5.0",
+    "opencolorio>=2.3.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/forge_io"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/forge_io", "README.md", "pyproject.toml"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+pythonpath = ["src"]
