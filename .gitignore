@@ -10,3 +10,9 @@ build/
 *.egg-info/
 .DS_Store
 uv.lock
+.cursor/
+
+# Generated image fixtures (regenerate with `python tests/fixtures/generate_fixtures.py`)
+tests/fixtures/solid_rgb.exr
+tests/fixtures/solid_rgb.dpx
+tests/fixtures/solid_rgb.png
