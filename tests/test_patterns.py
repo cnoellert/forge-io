@@ -20,3 +20,7 @@ def test_flame_out_of_range() -> None:
 
 def test_literal_path() -> None:
     assert resolve_pattern("/tmp/foo.exr", 0) == "/tmp/foo.exr"
+
+
+def test_literal_embedded_frame_digits() -> None:
+    assert resolve_pattern("/tmp/plate.0012.exr", 3) == "/tmp/plate.0003.exr"

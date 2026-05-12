@@ -16,6 +16,16 @@ If `OpenImageIO` / `opencolorio` are already satisfied in `forge`, `pip` still i
 
 The published package depends only on **NumPy**; **`import OpenImageIO`** and **`import PyOpenColorIO`** must work in your environment (Conda, ASWF CI, etc.). **`pip install forge-io` does not install OIIO or OCIO**—you will get `ImportError` on first read if they are missing.
 
+### Versioned installs (downstream deps)
+
+PyPI redistribution is **deferred** (see project policy). Until then, pin a **git tag**:
+
+```bash
+pip install "forge-io @ git+https://github.com/cnoellert/forge-io.git@v0.1.0"
+```
+
+For private forks, substitute the repo URL; SSH works the same way (`git+ssh://git@github.com/...`). Internal indices (devpi, Artifactory, GitHub Packages) are fine if your org already uses one—this package does not require a specific host.
+
 **Other setups:** a plain `venv` plus `pip install -e ".[dev]"` is fine if wheels exist for your Python version. **CI** uses a pinned ASWF Docker image (see `.github/workflows/ci.yml`), not Conda.
 
 ## Public API
@@ -54,13 +64,15 @@ Frozen keys: `resolution`, `pixel_aspect`, `timecode`, `framerate` — **always 
 
 ### §5 Readers
 
-- Every reader implements **`read_header_only`** (may decode and discard pixels if no cheap header API). `read_metadata` always dispatches through it.
+- OIIO-backed formats use **`ImageInput` + `spec`** for `read_metadata` / `read_header_only` (no full-frame pixel decode for metadata).
 
 ### §6 OCIO config resolution
 
 1. `ocio_config=` argument if passed  
 2. else `OCIO` environment variable  
 3. else **error** (`OCIOConfigError`)
+
+Where the canonical OCIO config lives (per-project vs machine vs repo) is an **operational** choice for each pipeline; this library only requires that **`OCIO` is set**, **`ocio_config=` is passed**, or callers stay on the decode-only path (`working_space=None`).
 
 ### §7 Formats in v0.1
 

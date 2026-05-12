@@ -10,14 +10,23 @@ def resolve_pattern(pattern: str, frame_idx: int) -> str:
     """Resolve a sequence pattern to a concrete filesystem path.
 
     Supports:
-    - Literal path (no printf token and no Flame bracket range): returned unchanged.
-    - ``printf``-style width token, e.g. ``%04d``.
+    - ``printf``-style width token, e.g. ``%04d`` (evaluated before other rules).
     - Flame-style range: ``[0001-0200]`` (padding inferred from left bound).
+    - Literal path with a trailing zero-padded frame stem before the extension,
+      e.g. ``/shots/plate.0012.exr`` → same directory, stem digits replaced by
+      ``frame_idx`` with the same width (compatibility with legacy sequence paths).
+    - Any other literal path: returned unchanged.
     """
     if "[" in pattern and "]" in pattern:
         return _resolve_flame(pattern, frame_idx)
     if "%" in pattern:
         return pattern % frame_idx
+    p = Path(pattern)
+    m = re.match(r"^(.*?)(\d+)(\.\w+)$", p.name)
+    if m:
+        prefix, num_str, ext = m.groups()
+        pad = len(num_str)
+        return str(p.with_name(f"{prefix}{str(frame_idx).zfill(pad)}{ext}"))
     return pattern
 
 

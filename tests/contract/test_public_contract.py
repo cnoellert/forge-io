@@ -94,13 +94,12 @@ def test_exr_ambiguous_two_subimages_each_rgb(tmp_path: Path) -> None:
         text=True,
     )
 
-    with pytest.raises(AmbiguousExrError) as ei:
+    ambig = r"Ambiguous beauty RGB selection \(\d+ candidates\)"
+    with pytest.raises(AmbiguousExrError, match=ambig):
         read(out_path)
-    assert "2 candidates" in str(ei.value)
 
-    with pytest.raises(AmbiguousExrError) as ei2:
+    with pytest.raises(AmbiguousExrError, match=ambig):
         read_metadata(out_path)
-    assert "2 candidates" in str(ei2.value)
 
 
 def test_exr_happy_path_and_metadata_no_decode_pixels(fixtures_dir: Path, tmp_path: Path) -> None:

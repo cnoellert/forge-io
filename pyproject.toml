@@ -26,7 +26,7 @@ dev = [
 packages = ["src/forge_io"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/forge_io", "README.md", "pyproject.toml"]
+include = ["src/forge_io", "README.md", "CHANGELOG.md", "pyproject.toml"]
 
 [tool.ruff]
 line-length = 100
