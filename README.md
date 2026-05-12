@@ -80,6 +80,8 @@ EXR, DPX, PNG, JPEG, TIFF via OIIO.
 
 **ARRIRAW (`.ari`):** a reader is **registered** (before OIIO in the dispatch list) but decode is **not implemented** — `read` / `read_metadata` raise **`ArriSdkUnavailableError`** until the ARRI Image SDK is integrated. The SDK does not ship in the wheel; facility installs apply.
 
+**SDK discovery:** set `FORGE_ARRI_SDK_PATH` to the absolute path of the ARRI Image SDK shared library (e.g. `libArriImageSdk.dylib` on macOS, `libArriImageSdk.so` on Linux; the actual filename comes from your Partner Program install). forge-io performs a coarse `ctypes.CDLL` load to confirm the library is present; symbol / ABI verification will happen in the SDK adapter once decode is wired. The ARRI Image SDK and ARRI MXF Library are distributed only via the [ARRI Camera Partner Program](https://www.arri.com/en/company/the-arri-philosophy/camera-partner-program) and cannot be redistributed by forge-io.
+
 ### §8 CI
 
 GitHub Actions uses a **pinned** [ASWF `ci-vfxall`](https://github.com/AcademySoftwareFoundation/aswf-docker) image so OIIO + OCIO match VFX expectations. Bump the tag deliberately when upgrading.
