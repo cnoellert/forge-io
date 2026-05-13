@@ -2,11 +2,32 @@
 
 ## Unreleased
 
-- RED R3D (`.r3d`) reader scaffold: dispatch after ARRI, before OIIO; `read` / `read_metadata` raise `RedSdkUnavailableError` until the R3D SDK gate is satisfied; decode lives in the **forge-io-red** sibling package per `RED_BINDING_PLAN.md`.
-- `FORGE_RED_SDK_PATH` coarse `ctypes.CDLL` discovery (symbol verification deferred to forge-io-red).
-- New public exception: `RedSdkUnavailableError`.
-- Documented **Sony X-OCN** as unsupported in forge-io: new `SonyUnsupportedError` type; no `.mxf` reader (ARRI MXF remains future work).
-- **CinemaDNG (`.dng`)** routed via OIIO/LibRaw when the plugin is present; committed `solid_rgb.dng` TIFF-hybrid fixture + golden test for decode stability.
+## v0.2.0
+
+Vendor reader scaffolds + Sony policy + CinemaDNG dispatch fix + OCIO test infrastructure.
+
+**New readers (gate-only, decode pending):**
+
+- RED R3D (`.r3d`, case-insensitive) — `RedRawReader`, `FORGE_RED_SDK_PATH`, `RedSdkUnavailableError`. Dispatched after ARRI, before OIIO. Real decode lives in the **forge-io-red** sibling package per `RED_BINDING_PLAN.md` (see repo root) — pending RED Developer Support replies and SDK install.
+
+**Documented non-features:**
+
+- Sony X-OCN — new `SonyUnsupportedError`. Sony Partner Program SDK access is NDA-gated and not publicly available; no `.mxf` reader is registered (ARRI MXF remains future work). Recommended path: transcode upstream via Sony RAW Viewer's RAW Exporter.
+
+**Format support:**
+
+- CinemaDNG (`.dng`) now dispatches through `OIIOReader` (was previously `UnsupportedFileError`). LibRaw-backed when the OIIO build includes the raw plugin (ASWF `ci-vfxall` ships it). The committed `solid_rgb.dng` smoke fixture is a TIFF-in-DNG hybrid for deterministic CI; a real Bayer-DNG golden remains an open TODO for true LibRaw version pinning.
+
+**Tests / infrastructure:**
+
+- OCIO golden test no longer depends on `CreateFromBuiltinConfig`; uses a committed minimal config (`tests/fixtures/ocio/minimal.ocio`).
+- Added `RED_BINDING_PLAN.md` — pybind11 binding strategy for the eventual forge-io-red sibling package, with seven open questions for RED Developer Support.
+
+**Open items (not in this release):**
+
+- Real R3D decode — blocked on RED Developer Support replies + SDK install + `forge-io-red` sibling package scaffolding.
+- Real ARRIRAW decode — blocked on ARRI Partner Program processing.
+- Bayer-DNG golden fixture for true LibRaw version pin.
 
 ## v0.1.1
 

@@ -21,7 +21,7 @@ The published package depends only on **NumPy**; **`import OpenImageIO`** and **
 PyPI redistribution is **deferred** (see project policy). Until then, pin a **git tag**:
 
 ```bash
-pip install "forge-io @ git+https://github.com/cnoellert/forge-io.git@v0.1.1"
+pip install "forge-io @ git+https://github.com/cnoellert/forge-io.git@v0.2.0"
 ```
 
 For private forks, substitute the repo URL; SSH works the same way (`git+ssh://git@github.com/...`). Internal indices (devpi, Artifactory, GitHub Packages) are fine if your org already uses one—this package does not require a specific host.
