@@ -78,9 +78,23 @@ Where the canonical OCIO config lives (per-project vs machine vs repo) is an **o
 
 EXR, DPX, PNG, JPEG, TIFF via OIIO.
 
-**ARRIRAW (`.ari`):** a reader is **registered** (before OIIO in the dispatch list) but decode is **not implemented** — `read` / `read_metadata` raise **`ArriSdkUnavailableError`** until the ARRI Image SDK is integrated. The SDK does not ship in the wheel; facility installs apply.
+**ARRIRAW (`.ari` and HDE-compressed `.arx`):** a reader is **registered** (before OIIO in the dispatch list) with **two backends**:
 
-**SDK discovery:** set `FORGE_ARRI_SDK_PATH` to the absolute path of the ARRI Image SDK shared library (e.g. `libArriImageSdk.dylib` on macOS, `libArriImageSdk.so` on Linux; the actual filename comes from your Partner Program install). forge-io performs a coarse `ctypes.CDLL` load to confirm the library is present; symbol / ABI verification will happen in the SDK adapter once decode is wired. The ARRI Image SDK and ARRI MXF Library are distributed only via the [ARRI Camera Partner Program](https://www.arri.com/en/company/the-arri-philosophy/camera-partner-program) and cannot be redistributed by forge-io.
+1. **ARRI Image SDK (pybind11)** — `FORGE_ARRI_SDK_PATH` points at the SDK shared library; real decode lives in the eventual **forge-io-arri** sibling package. **Pending Partner Program SDK access** — the gate here is currently a coarse `ctypes.CDLL` load only.
+
+2. **ART-CMD subprocess** — `FORGE_ARRI_ART_PATH` points at the `art-cmd` binary from [ARRI Reference Tools](https://www.arri.com/en/learn-help/learn-help-camera-system/tools/arri-reference-tool). forge-io shells out per call: decodes one frame to ACES AP0 scene-linear EXR (`AP0/D60/linear`, `exr_uncompressed/f16`, `--render-platform cpu` for determinism), reads it back via OIIO, returns `source_colorspace="AP0/D60/linear"`. Downstream OCIO transforms operate on that known intermediate. `read_metadata` uses `art-cmd export --skip-audio --skip-look` for header-only reads (no pixel decode).
+
+When **both** backends are configured, the SDK path takes precedence (faster, no disk roundtrip). When **neither** is configured, `ArriSdkUnavailableError` names both env vars so the user knows their options.
+
+**Sequence semantics:** ART-CMD's `--start N` is **offset within the clip**, not the absolute frame number. forge-io scans the clip directory to find the lowest frame index and computes the offset internally — callers always pass the absolute frame number they want.
+
+**macOS gotcha:** Safari-downloaded ART-CMD bundles are quarantined; if `art-cmd` fails to load its dylibs with "code signature ... not valid", clear the quarantine:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/art-cmd_*
+```
+
+forge-io does **not** redistribute either the ARRI Image SDK or ART-CMD. The SDK is gated behind the [ARRI Camera Partner Program](https://www.arri.com/en/company/the-arri-philosophy/camera-partner-program); ART-CMD is a free download under its own EULA (which permits subprocess invocation by third-party tools — no copying / modification / transfer required).
 
 **RED R3D (`.r3d`):** a reader is **registered** (after ARRI, before OIIO) so `.r3d` does not fall through to OIIO. `read` / `read_metadata` raise **`RedSdkUnavailableError`** until the R3D SDK is present; decode is implemented in the **forge-io-red** sibling package (see [`RED_BINDING_PLAN.md`](RED_BINDING_PLAN.md)), not in forge-io core. Install the [R3D SDK](https://www.red.com/download/r3d-sdk) under the RED EULA (including the **private non-shared directory** requirement — the SDK cannot ship inside a public wheel).
 

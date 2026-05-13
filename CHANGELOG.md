@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+**ARRIRAW decode via ART-CMD subprocess backend.**
+
+- `ArriRawReader` now claims **both `.ari` and HDE-compressed `.arx`** extensions (case-insensitive). HDE decompression is provided by ART-CMD's bundled `libcodexhdedecoder`.
+- Added second backend: `FORGE_ARRI_ART_PATH` points at the `art-cmd` binary from ARRI Reference Tools. forge-io shells out per call, decoding one frame to ACES AP0 scene-linear EXR (`AP0/D60/linear`, `exr_uncompressed/f16`, `--render-platform cpu`), reads it back via OIIO, and returns `source_colorspace="AP0/D60/linear"` for OCIO transforms downstream.
+- `read_metadata` for ARRIRAW uses `art-cmd export --skip-audio --skip-look` for header-only reads (no pixel decode). Canonical metadata extracted best-effort from the JSON; full ART-CMD export retained under `raw_header["art_cmd_export"]`.
+- Backend selection: SDK gate (option 1) takes precedence when configured; ART-CMD (option 2) is the fallback; `ArriSdkUnavailableError` names both env vars when neither is set.
+- ART-CMD's `--start N` is offset from the clip's first frame, not the absolute frame number — `arri_reader` scans the clip directory once to compute the offset for the requested frame.
+- Tests: `.arx` dispatch, ART-CMD env-var gate (set/unset/non-executable), backend selection precedence, sequence offset helpers, live end-to-end e2e tests that skip cleanly when `tests/fixtures/private/arri/` is absent.
+- README §7 documents both env vars, the macOS quarantine gotcha (`xattr -dr com.apple.quarantine`), and the EULA stance (subprocess invocation permitted; no redistribution).
+- `.gitignore`: `tests/fixtures/private/` for facility-licensed clips.
+
 ## v0.2.0
 
 Vendor reader scaffolds + Sony policy + CinemaDNG dispatch fix + OCIO test infrastructure.

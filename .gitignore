@@ -17,3 +17,9 @@ tests/fixtures/solid_rgb.exr
 tests/fixtures/solid_rgb.dpx
 tests/fixtures/solid_rgb.png
 tests/fixtures/solid_rgb.dng
+
+# Private vendor-raw fixtures (real .ari/.arx clips, licensed footage, etc.)
+tests/fixtures/private/
+
+# ART-CMD default log (forge-io passes --logpath "" to suppress; this catches manual runs)
+art.log
