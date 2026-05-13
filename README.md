@@ -96,9 +96,17 @@ xattr -dr com.apple.quarantine /Applications/art-cmd_*
 
 forge-io does **not** redistribute either the ARRI Image SDK or ART-CMD. The SDK is gated behind the [ARRI Camera Partner Program](https://www.arri.com/en/company/the-arri-philosophy/camera-partner-program); ART-CMD is a free download under its own EULA (which permits subprocess invocation by third-party tools — no copying / modification / transfer required).
 
-**RED R3D (`.r3d`):** a reader is **registered** (after ARRI, before OIIO) so `.r3d` does not fall through to OIIO. `read` / `read_metadata` raise **`RedSdkUnavailableError`** until the R3D SDK is present; decode is implemented in the **forge-io-red** sibling package (see [`RED_BINDING_PLAN.md`](RED_BINDING_PLAN.md)), not in forge-io core. Install the [R3D SDK](https://www.red.com/download/r3d-sdk) under the RED EULA (including the **private non-shared directory** requirement — the SDK cannot ship inside a public wheel).
+**RED R3D (`.r3d`):** a reader is **registered** (after ARRI, before OIIO) with **two backends**:
 
-**RED SDK discovery:** set `FORGE_RED_SDK_PATH` to the absolute path of the SDK shared library from your install. forge-io performs a coarse `ctypes.CDLL` gate only; symbol / ABI checks belong in **forge-io-red**.
+1. **R3D SDK pybind11** — `FORGE_RED_SDK_PATH` points at the SDK shared library; real decode lives in the eventual **forge-io-red** sibling package (see [`RED_BINDING_PLAN.md`](RED_BINDING_PLAN.md)). **Pending RED Developer Program SDK access** — the gate here is currently a coarse `ctypes.CDLL` load only. Note: the `REDR3D.dylib` shipped inside consumer host apps (REDCINE-X, DaVinci Resolve, Nuke, Mocha, Fusion, SynthEyes, BLG) is symbol-stripped — the coarse gate would pass but the eventual sibling will fail to bind. Point this env var at the actual SDK download, not a host-app dylib.
+
+2. **REDline subprocess** — `FORGE_RED_REDLINE_PATH` points at the `REDline` binary bundled with [REDCINE-X PRO](https://www.red.com/downloads) (free download). On macOS the path is typically `/Applications/REDCINE-X Professional/REDCINE-X PRO.app/Contents/MacOS/REDline`. forge-io shells out per call: decodes one frame to REDWideGamutRGB scene-linear half-float EXR (`--format 2 --res 1 --colorSpace 25 --gammaCurve -1 --useMeta`), reads it back via OIIO, returns `source_colorspace="REDWideGamutRGB/linear"`. Downstream OCIO transforms operate on that known intermediate. `read_metadata` uses `--printMeta 1` for header-only reads (no pixel decode).
+
+When **both** backends are configured, the SDK path takes precedence. When **neither** is configured, `RedSdkUnavailableError` names both env vars so the user knows their options.
+
+**Decode contract:** the REDline backend pins output to REDWideGamutRGB primaries + linear transfer regardless of the source clip's color science. For IPP2 clips this is the natural default; for Legacy clips REDline applies its internal Legacy→IPP2 transform. forge-io trusts RED's authoritative color science here, paralleling the ARRI ART-CMD backend's `AP0/D60/linear` posture.
+
+forge-io does **not** redistribute the R3D SDK or REDline. The SDK is gated behind the [RED Developer Program](https://www.red.com/developers); REDline is bundled inside the free REDCINE-X PRO download under its EULA (which permits subprocess invocation by third-party tools — no copying / modification / transfer required).
 
 **Sony X-OCN:** forge-io does **not** register an `.mxf` reader. X-OCN decode requires [Sony Partner Program](https://pro.sony) SDK access (NDA-gated) or a facility-licensed partner path (e.g. nablet AMA). There is no bundled Sony decode here — use **Sony RAW Viewer's RAW Exporter** (or similar) to transcode X-OCN to EXR/DPX upstream, then read those formats with OIIO. The public type **`SonyUnsupportedError`** documents this policy for downstream code that may raise it when a future optional path is absent.
 

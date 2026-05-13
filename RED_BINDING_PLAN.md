@@ -1,6 +1,21 @@
 # RED R3D SDK — Python Binding Strategy Plan
 
-**Status:** Plan, not implementation. Author this against the public header at
+**Status:** Future optimization. Working decode for forge-io v0.3 ships via
+the **REDline subprocess backend** (see `src/forge_io/readers/red_reader.py`,
+README §7) — a real .R3D → REDWideGamutRGB-linear EXR pipeline running today
+against REDCINE-X PRO's bundled CLI. This plan documents the eventual
+in-process pybind11 binding (`forge-io-red` sibling package) which trades
+per-call subprocess spawn (~1.34s for 8K) for in-process buffer reuse. Not
+blocking any v0.x release; revisit once the RED Developer Program returns
+SDK access and someone needs the lower decode latency.
+
+Empirically verified against REDCINE-X PRO Build 65.1.3 (Mar 2026):
+REDline's no-args banner reports **R3DAPI 9.2.0-b822452** internally, so
+the runtime ABI we'd target with this plan matches what the consumer
+tooling already ships — only the linkable / symbol-rich form of the SDK
+is gated behind partner access.
+
+Plan authored against the public header at
 `https://github.com/arunabhcode/RedSDK/blob/master/include/red/R3DSDK.h`
 (v7.0 mirror; API shape reportedly unchanged through 9.x). Validate every
 assumption here against the actual SDK download once a developer can install

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+**RED R3D decode via REDline subprocess backend.**
+
+- `RedRawReader` now has **two backends**, mirroring the ARRI v0.2.1 pattern:
+  - **Option 1 (scaffold):** `FORGE_RED_SDK_PATH` — coarse `ctypes.CDLL` gate, real decode pending the `forge-io-red` sibling per `RED_BINDING_PLAN.md`.
+  - **Option 2 (working):** `FORGE_RED_REDLINE_PATH` points at the `REDline` binary bundled with REDCINE-X PRO. forge-io shells out per call, decoding one frame to REDWideGamutRGB scene-linear half-float EXR (`--format 2 --res 1 --colorSpace 25 --gammaCurve -1 --useMeta`), reads it back via OIIO, returns `source_colorspace="REDWideGamutRGB/linear"`.
+- Backend selection: SDK gate (option 1) takes precedence when configured; REDline (option 2) is the fallback; `RedSdkUnavailableError` names both env vars when neither is set.
+- `read_metadata` for `.r3d` uses `--printMeta 1` for header-only reads (no pixel decode, ~0.7s wall). Canonical fields (resolution, framerate, timecode, pixel_aspect) parsed from REDline's `Key:\tValue` output; full field dump retained under `raw_header["redline_meta"]`. REDline returns exit code 1 for metadata-only invocations — `_run_redline` accepts that explicitly via `accept_codes=(0, 1)`.
+- `read` path uses a single REDline invocation; canonical metadata is harvested from the EXR's `extra_attribs` REDline forwards (`FrameWidth`, `FrameHeight`, EXR-standard `framesPerSecond` rational, `PixelAspectRatio`, `TOD TC Start`). Decode pins primaries + transfer regardless of source IPP2/Legacy — trusts RED's authoritative color science, parallels ARRI's `AP0/D60/linear` posture.
+- Decode contract verified live against an 8192×4320 V-RAPTOR XE IPP2 clip: full-res half-float EXR in ~1.34s wall (cold) on Apple Silicon; canonical metadata: resolution `(8192, 4320)`, framerate `24000/1001` from EXR rational, timecode from TOD TC.
+- Empirically confirmed: `REDR3D.dylib` shipped inside every consumer host app (REDCINE-X, Resolve, Nuke, Mocha, Fusion, SynthEyes, BLG) is symbol-stripped — only 179–195 obfuscated `R3D_AAA` trampolines export, zero `R3DSDK::*`. The SDK gate's coarse `ctypes.CDLL` would false-positive on those; documented in `red_reader.py` and README §7.
+- `RED_BINDING_PLAN.md` re-framed: subprocess path ships now, pybind11/SDK shim is future `forge-io-red` work for lower decode latency. Plan also gained §6 with the 133-key `RMD_*` catalog from the v7.0 mirror of `R3DSDKMetadata.h`.
+- Tests: REDline gate detection (set/unset/non-executable), backend selection precedence, parser unit tests (`_parse_redline_keyvalue`, `_canonical_from_redline_fields`, `_canonical_from_exr_attribs` including the `framesPerSecond` rational preference), live e2e tests that skip cleanly when `tests/fixtures/private/red/` is absent.
+- README §7 documents both env vars, IPP2/Legacy decode contract, and the partner-vs-consumer dylib distinction.
+
 ## v0.2.2
 
 **Fix: ARRI canonical metadata extraction from real ART-CMD exports.**
