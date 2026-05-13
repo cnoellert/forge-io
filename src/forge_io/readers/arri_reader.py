@@ -270,39 +270,75 @@ def _decode_via_art_cmd(art_cmd: Path, path: Path) -> ReaderDecode:
     )
 
 
-def _canonical_from_metadata_json(doc: dict[str, Any]) -> dict[str, Any]:
-    """Best-effort extraction of canonical keys from ART-CMD's metadata JSON.
+def _parse_fraction(s: Any) -> float | None:
+    """Parse ART-CMD's fraction strings like ``"24/1"`` or ``"217/15625"``.
 
-    ART-CMD's exported JSON is rich and the exact key layout depends on the
-    source format and ART-CMD version. We try a small set of common paths
-    and fall back to ``None`` for anything missing.
+    Returns ``None`` for anything that doesn't look like ``int/int``.
     """
-    def _deep_get(*keys: str) -> Any:
-        for key in keys:
-            cur: Any = doc
-            ok = True
-            for part in key.split("."):
-                if isinstance(cur, dict) and part in cur:
-                    cur = cur[part]
-                else:
-                    ok = False
-                    break
-            if ok and cur is not None:
-                return cur
+    if not isinstance(s, str):
         return None
+    parts = s.split("/")
+    if len(parts) != 2:
+        return None
+    try:
+        num, den = int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
+    if den == 0:
+        return None
+    return num / den
 
-    width = _deep_get("imageWidth", "width", "video.width")
-    height = _deep_get("imageHeight", "height", "video.height")
-    resolution = (int(width), int(height)) if width and height else None
-    framerate = _deep_get("frameRate", "framerate", "video.frameRate")
-    timecode = _deep_get("timecodeStart", "timecode", "video.timecodeStart")
-    pixel_aspect = _deep_get("lensSqueezeFactor", "pixelAspect", "lens.lensSqueezeFactor")
+
+def _index_named_sets(sets: list[Any]) -> dict[str, dict[str, Any]]:
+    """Index ART-CMD ``{metadataSetName, metadataSetPayload}`` lists by set name."""
+    out: dict[str, dict[str, Any]] = {}
+    for entry in sets:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("metadataSetName")
+        payload = entry.get("metadataSetPayload")
+        if isinstance(name, str) and isinstance(payload, dict):
+            out[name] = payload
+    return out
+
+
+def _canonical_from_metadata_json(doc: dict[str, Any]) -> dict[str, Any]:
+    """Extract canonical metadata from ART-CMD's structured export.
+
+    ART-CMD groups clip metadata into named sets under
+    ``clipBasedMetadataSets`` (e.g. ``Image Size``, ``Project Rate``) and
+    ``descriptiveMetadataSets`` (e.g. ``Lens Device``). Each entry has
+    ``{metadataSetName, metadataSetPayload, metadataSetSchemaUri}``. We
+    index those and pull resolution / framerate / pixel aspect explicitly.
+
+    Timecode is not reliably stored in single-frame ``.ari``/``.arx``
+    clips — it typically comes from sidecar audio MXF. We leave it
+    ``None`` rather than guess. Callers wanting timecode can dig into
+    ``raw_header["art_cmd_export"]`` directly.
+    """
+    clip = _index_named_sets(doc.get("clipBasedMetadataSets") or [])
+    desc = _index_named_sets(doc.get("descriptiveMetadataSets") or [])
+
+    resolution: tuple[int, int] | None = None
+    stored = (clip.get("Image Size") or {}).get("storedSize")
+    if isinstance(stored, dict):
+        w, h = stored.get("width"), stored.get("height")
+        if isinstance(w, int) and isinstance(h, int):
+            resolution = (w, h)
+
+    framerate = _parse_fraction((clip.get("Project Rate") or {}).get("timebase"))
+
+    # Pixel aspect of the *stored* image is always 1.0 for ARRIRAW (square
+    # photosites). The lens squeeze factor is metadata for downstream desqueeze
+    # and is preserved verbatim in raw_header — not promoted to pixel_aspect.
+    pixel_aspect: float | None = 1.0 if resolution is not None else None
+
     return merge_canonical(
         None,
         resolution=resolution,
-        framerate=float(framerate) if framerate is not None else None,
-        timecode=str(timecode) if timecode is not None else None,
-        pixel_aspect=float(pixel_aspect) if pixel_aspect is not None else None,
+        framerate=framerate,
+        timecode=None,
+        pixel_aspect=pixel_aspect,
     )
 
 

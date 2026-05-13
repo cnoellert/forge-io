@@ -219,6 +219,52 @@ def test_printf_pattern_preserves_padding(tmp_path: Path) -> None:
     assert arri_reader._printf_pattern_for(p) == "A001C046_130101_NQ96.%07d.arx"
 
 
+def test_parse_fraction_handles_art_cmd_strings() -> None:
+    assert arri_reader._parse_fraction("24/1") == 24.0
+    assert arri_reader._parse_fraction("217/15625") == pytest.approx(217 / 15625)
+    assert arri_reader._parse_fraction("1/1") == 1.0
+    assert arri_reader._parse_fraction("1/0") is None
+    assert arri_reader._parse_fraction("not a fraction") is None
+    assert arri_reader._parse_fraction(24.0) is None
+    assert arri_reader._parse_fraction(None) is None
+
+
+def test_canonical_from_metadata_json_synthetic() -> None:
+    """Synthetic ART-CMD export shape — runs without the real fixture."""
+    doc = {
+        "clipBasedMetadataSets": [
+            {
+                "metadataSetName": "Image Size",
+                "metadataSetPayload": {
+                    "storedSize": {"width": 4448, "height": 3096},
+                },
+            },
+            {
+                "metadataSetName": "Project Rate",
+                "metadataSetPayload": {"dropframe": False, "timebase": "24/1"},
+            },
+        ],
+        "descriptiveMetadataSets": [
+            {
+                "metadataSetName": "Lens Device",
+                "metadataSetPayload": {"lensSqueezeFactor": "1/1"},
+            },
+        ],
+    }
+    canonical = arri_reader._canonical_from_metadata_json(doc)
+    assert canonical["resolution"] == (4448, 3096)
+    assert canonical["framerate"] == 24.0
+    assert canonical["pixel_aspect"] == 1.0
+    assert canonical["timecode"] is None
+
+
+def test_canonical_from_metadata_json_missing_sets_returns_none() -> None:
+    """When the expected sets are absent, every canonical key is None."""
+    canonical = arri_reader._canonical_from_metadata_json({})
+    for key in ("resolution", "framerate", "timecode", "pixel_aspect"):
+        assert canonical[key] is None
+
+
 # ---------- live ART-CMD end-to-end (skipped without fixture) ------------
 
 
@@ -266,17 +312,19 @@ def test_live_art_cmd_decodes_one_frame_to_aces_ap0_linear(
 def test_live_art_cmd_metadata_only_no_pixel_decode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """read_metadata via ART-CMD export — no pixels returned."""
+    """read_metadata via ART-CMD export — resolution and framerate extracted."""
     _ = _live_art_cmd_or_skip()
     frame = _live_clip_or_skip()
     monkeypatch.setattr(arri_reader, "_arri_sdk_available", lambda: False)
     meta = read_metadata(frame)
     assert meta.source_colorspace == "AP0/D60/linear"
-    # resolution may be None if the JSON layout differs from our key heuristics;
-    # raw_header must always contain the full ART-CMD export.
     assert "art_cmd_export" in meta.raw_header
-    if meta.resolution is not None:
-        w, h = meta.resolution
-        assert w > 0 and h > 0
+    # ARRIRAW always has an Image Size set and Project Rate set in the export.
+    assert meta.resolution is not None
+    w, h = meta.resolution
+    assert w > 0 and h > 0
+    assert meta.metadata["framerate"] is not None
+    assert meta.metadata["framerate"] > 0
+    assert meta.metadata["pixel_aspect"] == 1.0
 
 
