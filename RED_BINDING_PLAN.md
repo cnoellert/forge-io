@@ -220,7 +220,88 @@ The decoded color space depends entirely on `VideoDecodeJob.PixelType` and
   v0.2 keyword arg (`red_target_colorspace=...`). v0.1 stays
   "decode at clip default, report what we got."
 
-## 6. Open questions for RED Developer Support
+## 6. Metadata keys (R3DSDKMetadata.h v7.0 mirror)
+
+`R3DSDKMetadata.h` was fetched from the same public v7.0 mirror that backs §1
+of this plan. It declares **133** `RMD_*` keys as `static const char[]` string
+constants inside `namespace R3DSDK`. The shim does not need to expose
+`RMD_*` symbols — every accessor takes the **string value** (e.g. `"iso"`),
+so the Python side can just pass literals. Names below are the v7.0 strings;
+diff against 9.2.0's header once the SDK download is in hand (see §7.1).
+
+**Nine keys are documented "Guaranteed to exist":**
+
+| Constant | String | Type | Use |
+|---|---|---|---|
+| `RMD_IMAGE_WIDTH` | `image_width` | Int | resolution.x fallback |
+| `RMD_IMAGE_HEIGHT` | `image_height` | Int | resolution.y fallback |
+| `RMD_FRAMERATE_NUMERATOR` | `framerate_numerator` | Int | framerate fallback (num) |
+| `RMD_FRAMERATE_DENOMINATOR` | `framerate_denominator` | Int | framerate fallback (den) |
+| `RMD_ISO` | `iso` | Float | raw_header |
+| `RMD_EXPOSURE_COMPENSATION` | `exposure_compensation` | Float | raw_header (Legacy color version only — see header line 85) |
+| `RMD_START_ABSOLUTE_TIMECODE` | `start_absolute_timecode` | String `"01:00:00:00"` | timecode (when pref=1) |
+| `RMD_START_EDGE_TIMECODE` | `start_edge_timecode` | String `"01:00:00:00"` | timecode (when pref=0) |
+| `RMD_USER_TIMECODE_PREFERENCE` | `user_timecode_preference` | Int (0=edge/run-record, 1=absolute) | selects between the two `START_*` keys |
+
+For every non-guaranteed key, call `Clip::MetadataExists(key)` before the typed
+accessor — `MetadataItemAsInt/Float/String` are undefined when the key is
+absent.
+
+### 6.1 Canonical `ImageMetadata` field mapping
+
+forge-io's canonical keys are `resolution`, `pixel_aspect`, `timecode`,
+`framerate` (`src/forge_io/_types.py:15`). Prefer the **direct `Clip::`
+accessor** over the metadata DB where one exists — fewer string lookups,
+fewer "key absent" branches, no `std::string` round-trip.
+
+| forge-io canonical | Primary source | Fallback (metadata DB) |
+|---|---|---|
+| `resolution` | `Clip::Width()` / `Clip::Height()` (R3DSDK.h:250–254) — `size_t` | `RMD_IMAGE_WIDTH`, `RMD_IMAGE_HEIGHT` |
+| `framerate` | `Clip::VideoAudioFramerate()` (R3DSDK.h:269) — `float` | `RMD_FRAMERATE_NUMERATOR / RMD_FRAMERATE_DENOMINATOR` |
+| `timecode` (start) | `Clip::Timecode(0)` (R3DSDK.h:292; remember **scratch buffer** — `strdup` in the shim before returning) | branch on `RMD_USER_TIMECODE_PREFERENCE`; read `RMD_START_ABSOLUTE_TIMECODE` (pref=1) or `RMD_START_EDGE_TIMECODE` (pref=0) |
+| `pixel_aspect` | `RMD_PIXEL_ASPECT_RATIO` (Float) | derive from `RMD_CLIP_ASPECT_NUMERATOR / RMD_CLIP_ASPECT_DENOMINATOR`; cross-check `RMD_ANAMORPHIC_MODE` (0=none, 1=2×, 2=1.3×, 3=1.25×) — if anamorphic, the lens squeeze is *separate* from the sensor's PAR and should land in `raw_header`, not `pixel_aspect`. ARRIRAW does the same (v0.2.2 CHANGELOG). |
+
+### 6.2 Color-science metadata (drives `source_colorspace` reporting)
+
+| Key | Type | Why we read it |
+|---|---|---|
+| `RMD_CLIP_DEFAULT_COLOR_VERSION` | Int | `2` = Legacy (ColorVersion2), `3` = IPP2 (ColorVersion3). Same field as `Clip::DefaultColorVersion()` (R3DSDK.h:226–228). Drives §5 decision: when `3`, decode with NULL `ImageProcessingSettings` lands in REDWideGamutRGB/linear (because half-float pixel type ignores gamma curve). When `2`, the default decode is Legacy primaries and we report `source_colorspace = "unknown"` per the declared-or-unknown policy. |
+| `RMD_CREATIVE_LUT` | String | IPP2-only sidecar 3D LUT filename. Surface in `raw_header` so downstream tools can find it; forge-io does **not** apply it (display-transform = out of scope). |
+| `RMD_HDR_MODE` | (see header) | Indicates HDRx track presence; relevant when `VideoDecodeJob.HdrProcessing` is non-NULL. Out of v0.1 scope but record. |
+
+### 6.3 `raw_header` payload for v0.1
+
+Surface this superset (read with `MetadataExists` gate, never blind-typed):
+
+- **Camera/sensor:** `RMD_CAMERA_MODEL`, `RMD_CAMERA_MODEL_ID`, `RMD_CAMERA_PIN`, `RMD_CAMERA_FIRMWARE_VERSION`, `RMD_SENSOR_NAME`, `RMD_SENSOR_ID`, `RMD_SENSOR_OLPF_NAME`, `RMD_SENSOR_SENSITIVITY_NAME`
+- **Clip identity:** `RMD_CLIP_ID`, `RMD_REEL_ID`, `RMD_ORIGINAL_FILENAME`
+- **Exposure / WB:** `RMD_ISO`, `RMD_ISO_CALIBRATION_VERSION`, `RMD_EXPOSURE_TIME` (μs), `RMD_WHITE_BALANCE_KELVIN`, `RMD_WHITE_BALANCE_TINT`, `RMD_SHUTTER_DEGREES`, `RMD_SHUTTER_FRACTIONS`
+- **Color/IPP2:** `RMD_CLIP_DEFAULT_COLOR_VERSION`, `RMD_CREATIVE_LUT`, `RMD_DRX`, `RMD_BRIGHTNESS`, `RMD_CONTRAST`, `RMD_SATURATION`, `RMD_DIGITAL_GAIN_RED/GREEN/BLUE`, `RMD_FLUT_CONTROL`
+- **Orientation:** `RMD_FLIP_HORIZONTAL`, `RMD_FLIP_VERTICAL`, `RMD_ANAMORPHIC_MODE`
+- **Timing:** `RMD_FRAMERATE_NUMERATOR`, `RMD_FRAMERATE_DENOMINATOR`, `RMD_RECORD_FRAMERATE`, `RMD_USER_TIMECODE_PREFERENCE`, `RMD_START_ABSOLUTE_TIMECODE`, `RMD_START_EDGE_TIMECODE`
+
+The remaining ~100 keys (IMU readings, frame-guide overlays, user-curve
+control points, audio routing, etc.) are reachable through
+`Clip::MetadataItemAsString(key)` for callers who need them — we just don't
+enumerate them in `raw_header` by default. `MetadataCount()` + iteration via
+`MetadataItemKey(i)` (R3DSDK.h:332–337) gives the full dump if a debugging
+path needs it.
+
+### 6.4 Gotchas captured from the header
+
+- `RMD_DROPPED_FRAME_COUNT` exists — surface in `raw_header` so traffik or
+  QC tools can flag dropped-frame clips.
+- `RMD_EXPOSURE_COMPENSATION` is **Legacy-only**; only "guaranteed" inside
+  ColorVersion2 clips. For IPP2 clips read `RMD_EXPOSURE_ADJUST` instead.
+- `MetadataType` enum (header lines ~17–24) has four values — `Invalid`,
+  `Int`, `String`, `Float`. The accessors auto-convert with rules tabulated
+  in the header comment block; calling `MetadataItemAsFloat` on a String
+  value parses the string. Prefer the matched accessor for the documented
+  type to avoid hidden parse errors.
+
+---
+
+## 7. Open questions for RED Developer Support
 
 Public header does not answer:
 
@@ -243,9 +324,13 @@ Public header does not answer:
    NumPy default allocators give 16 on most platforms but it's not
    guaranteed by the Python data model. Confirm whether 32-byte (AVX) is
    preferred for performance even if 16 is the minimum.
-5. **Metadata keys for ISO, WB Kelvin/Tint, recording color space, gamma.**
-   These live in `R3DSDKMetadata.h` — get that file and enumerate `RMD_*`
-   constants before writing the shim.
+5. **Metadata key parity 7.0 → 9.2.0.** The v7.0 `R3DSDKMetadata.h` is now
+   enumerated in §6 (133 keys; 9 documented guaranteed). Confirm the
+   string values are unchanged in 9.2.0 — especially `RMD_CLIP_DEFAULT_COLOR_VERSION`
+   (drives our `source_colorspace` branch) and the timecode pair
+   (`RMD_START_*_TIMECODE` + `RMD_USER_TIMECODE_PREFERENCE`). New keys in
+   9.2.0 may exist (HDR, gyro, lens-mount) but are additive — not blocking
+   v0.1.
 6. **Re-entrancy of `InitializeSdk`.** Can we call it a second time after
    `FinalizeSdk` in the same process (e.g. test teardown / reload)? Header
    says "must be called one time" but doesn't say "exactly once forever."
@@ -256,7 +341,11 @@ Public header does not answer:
 
 ---
 
-**Next concrete step for the implementer:** once the 9.2.0 SDK is installed,
-diff `include/R3DSDK.h` from the download against this plan's references,
-then fetch `R3DSDKMetadata.h` and enumerate the metadata keys before writing
-`_r3d_ext.cpp`.
+**Next concrete step for the implementer:** §6 now catalogues the v7.0
+`RMD_*` keys and the canonical-field mapping, so the remaining gating work
+is **(a)** install the 9.2.0 SDK and diff `include/R3DSDK.h` +
+`R3DSDKMetadata.h` against this plan's references (§7.1, §7.5), and
+**(b)** confirm the linkage / ABI questions (§7.2, §7.3, §7.7) with RED
+Developer Support. Once those clear, the shim outline in §4 plus the key
+catalog in §6 are enough to start writing `_r3d_ext.cpp` in the
+`forge-io-red` sibling.
