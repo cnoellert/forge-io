@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## v0.2.2
+
+**Fix: ARRI canonical metadata extraction from real ART-CMD exports.**
+
+The v0.2.1 ``_canonical_from_metadata_json`` heuristic walked a flat tree and matched zero keys against ART-CMD's actual export, which nests named sets under ``clipBasedMetadataSets`` / ``descriptiveMetadataSets`` with ``{metadataSetName, metadataSetPayload}`` entries. v0.2.1 callers got ``resolution`` / ``framerate`` / ``pixel_aspect`` all ``None`` from ``read_metadata`` for ARRIRAW.
+
+v0.2.2 verifies against a real ALEXA 35 ARRIRAW HDE ``.arx`` fixture:
+
+- ``resolution``: ``(width, height)`` from ``Image Size.storedSize``.
+- ``framerate``: parsed from ``Project Rate.timebase`` (e.g. ``"24/1"`` → ``24.0``).
+- ``pixel_aspect``: ``1.0`` (ARRIRAW pixels are square; lens squeeze remains in ``raw_header``).
+- ``timecode``: still ``None`` for single-frame ``.ari`` / ``.arx`` — typically sourced from a sidecar; the full ART-CMD export sits under ``raw_header["art_cmd_export"]`` if callers need to dig.
+
+New ``_parse_fraction`` and ``_index_named_sets`` helpers cover ART-CMD's recurring ``"N/D"`` strings and named-set shape. Synthetic unit tests guard the parser without requiring the private fixture; the live metadata test now asserts populated values.
+
 ## v0.2.1
 
 **ARRIRAW decode via ART-CMD subprocess backend.**
