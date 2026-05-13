@@ -13,7 +13,7 @@ from forge_io.readers._base import Reader, ReaderDecode
 
 _Decode = tuple[np.ndarray, int, tuple[int, int], str, dict[str, Any], dict[str, Any]]
 
-_OIIO_EXTENSIONS = {".exr", ".dpx", ".png", ".jpg", ".jpeg", ".tif", ".tiff"}
+_OIIO_EXTENSIONS = {".exr", ".dpx", ".dng", ".png", ".jpg", ".jpeg", ".tif", ".tiff"}
 
 _BEAUTY_LAYER_ALLOWLIST = frozenset({"rgba", "rgb", "beauty"})
 

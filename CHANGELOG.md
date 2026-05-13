@@ -6,6 +6,7 @@
 - `FORGE_RED_SDK_PATH` coarse `ctypes.CDLL` discovery (symbol verification deferred to forge-io-red).
 - New public exception: `RedSdkUnavailableError`.
 - Documented **Sony X-OCN** as unsupported in forge-io: new `SonyUnsupportedError` type; no `.mxf` reader (ARRI MXF remains future work).
+- **CinemaDNG (`.dng`)** routed via OIIO/LibRaw when the plugin is present; committed `solid_rgb.dng` TIFF-hybrid fixture + golden test for decode stability.
 
 ## v0.1.1
 

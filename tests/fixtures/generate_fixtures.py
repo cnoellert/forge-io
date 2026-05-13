@@ -43,7 +43,21 @@ def main() -> None:
     png_path = OUT / "solid_rgb.png"
     png.write(str(png_path))
 
-    print("Wrote:", exr_path, dpx_path, png_path, file=sys.stderr)
+    # ".dng" fixture: TIFF float RGB bitstream (same values as EXR) for a tiny
+    # deterministic CI file. OIIO dispatches .dng through the raw reader stack;
+    # TIFF-in-DNG is read without LibRaw. Camera Bayer DNG remains LibRaw-backed
+    # and is version-sensitive across LibRaw bumps (see README §7).
+    tif_spec = oiio.ImageSpec(w, h, 3, oiio.FLOAT)
+    tif_spec.channelnames = ("R", "G", "B")
+    tif_buf = oiio.ImageBuf(tif_spec)
+    tif_buf.set_pixels(oiio.ROI(0, w, 0, h, 0, 1, 0, 3), arr)
+    tif_path = OUT / "_solid_rgb_tif_tmp.tif"
+    tif_buf.write(str(tif_path))
+    dng_path = OUT / "solid_rgb.dng"
+    dng_path.write_bytes(tif_path.read_bytes())
+    tif_path.unlink(missing_ok=True)
+
+    print("Wrote:", exr_path, dpx_path, png_path, dng_path, file=sys.stderr)
 
 
 if __name__ == "__main__":
