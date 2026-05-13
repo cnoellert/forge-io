@@ -16,3 +16,4 @@ uv.lock
 tests/fixtures/solid_rgb.exr
 tests/fixtures/solid_rgb.dpx
 tests/fixtures/solid_rgb.png
+tests/fixtures/solid_rgb.dng
