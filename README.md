@@ -82,6 +82,10 @@ EXR, DPX, PNG, JPEG, TIFF via OIIO.
 
 **SDK discovery:** set `FORGE_ARRI_SDK_PATH` to the absolute path of the ARRI Image SDK shared library (e.g. `libArriImageSdk.dylib` on macOS, `libArriImageSdk.so` on Linux; the actual filename comes from your Partner Program install). forge-io performs a coarse `ctypes.CDLL` load to confirm the library is present; symbol / ABI verification will happen in the SDK adapter once decode is wired. The ARRI Image SDK and ARRI MXF Library are distributed only via the [ARRI Camera Partner Program](https://www.arri.com/en/company/the-arri-philosophy/camera-partner-program) and cannot be redistributed by forge-io.
 
+**RED R3D (`.r3d`):** a reader is **registered** (after ARRI, before OIIO) so `.r3d` does not fall through to OIIO. `read` / `read_metadata` raise **`RedSdkUnavailableError`** until the R3D SDK is present; decode is implemented in the **forge-io-red** sibling package (see [`RED_BINDING_PLAN.md`](RED_BINDING_PLAN.md)), not in forge-io core. Install the [R3D SDK](https://www.red.com/download/r3d-sdk) under the RED EULA (including the **private non-shared directory** requirement — the SDK cannot ship inside a public wheel).
+
+**RED SDK discovery:** set `FORGE_RED_SDK_PATH` to the absolute path of the SDK shared library from your install. forge-io performs a coarse `ctypes.CDLL` gate only; symbol / ABI checks belong in **forge-io-red**.
+
 ### §8 CI
 
 GitHub Actions uses a **pinned** [ASWF `ci-vfxall`](https://github.com/AcademySoftwareFoundation/aswf-docker) image so OIIO + OCIO match VFX expectations. Bump the tag deliberately when upgrading.

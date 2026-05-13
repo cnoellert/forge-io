@@ -8,8 +8,12 @@ from forge_io.exceptions import UnsupportedFileError
 from forge_io.readers._base import Reader
 from forge_io.readers.arri_reader import ArriRawReader
 from forge_io.readers.oiio_reader import OIIOReader
+from forge_io.readers.red_reader import RedRawReader
 
-_READERS: list[Reader] = sorted([ArriRawReader(), OIIOReader()], key=lambda r: r.priority)
+_READERS: list[Reader] = sorted(
+    [ArriRawReader(), RedRawReader(), OIIOReader()],
+    key=lambda r: r.priority,
+)
 
 
 def get_reader(path: Path) -> Reader:

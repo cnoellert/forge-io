@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- RED R3D (`.r3d`) reader scaffold: dispatch after ARRI, before OIIO; `read` / `read_metadata` raise `RedSdkUnavailableError` until the R3D SDK gate is satisfied; decode lives in the **forge-io-red** sibling package per `RED_BINDING_PLAN.md`.
+- `FORGE_RED_SDK_PATH` coarse `ctypes.CDLL` discovery (symbol verification deferred to forge-io-red).
+- New public exception: `RedSdkUnavailableError`.
+
 ## v0.1.1
 
 - Relax `requires-python` to `>=3.11` (remove `<3.14` cap) so Python 3.14+ can install without `--ignore-requires-python`.

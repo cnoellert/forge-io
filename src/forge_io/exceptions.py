@@ -29,6 +29,10 @@ class ArriSdkUnavailableError(ForgeIOError):
     """ARRIRAW decode was requested but the ARRI Image SDK is not available or not wired."""
 
 
+class RedSdkUnavailableError(ForgeIOError):
+    """R3D decode was requested but the RED SDK is not available or not wired in forge-io core."""
+
+
 class ImageDecodeError(ForgeIOError):
     """Pixel decode failed or the file does not match the expected layout."""
 
