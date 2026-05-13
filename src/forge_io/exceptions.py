@@ -33,6 +33,16 @@ class RedSdkUnavailableError(ForgeIOError):
     """R3D decode was requested but the RED SDK is not available or not wired in forge-io core."""
 
 
+class SonyUnsupportedError(ForgeIOError):
+    """Sony X-OCN decode is not available in forge-io.
+
+    X-OCN decode requires Sony Partner Program SDK access (NDA-gated, not
+    publicly available) or a facility-licensed partner plugin (nablet AMA,
+    etc.). forge-io does not bundle a Sony decode path. Use Sony RAW Viewer's
+    RAW Exporter CLI to transcode X-OCN to EXR/DPX upstream.
+    """
+
+
 class ImageDecodeError(ForgeIOError):
     """Pixel decode failed or the file does not match the expected layout."""
 

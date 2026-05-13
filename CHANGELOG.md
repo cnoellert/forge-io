@@ -5,6 +5,7 @@
 - RED R3D (`.r3d`) reader scaffold: dispatch after ARRI, before OIIO; `read` / `read_metadata` raise `RedSdkUnavailableError` until the R3D SDK gate is satisfied; decode lives in the **forge-io-red** sibling package per `RED_BINDING_PLAN.md`.
 - `FORGE_RED_SDK_PATH` coarse `ctypes.CDLL` discovery (symbol verification deferred to forge-io-red).
 - New public exception: `RedSdkUnavailableError`.
+- Documented **Sony X-OCN** as unsupported in forge-io: new `SonyUnsupportedError` type; no `.mxf` reader (ARRI MXF remains future work).
 
 ## v0.1.1
 

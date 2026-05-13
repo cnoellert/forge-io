@@ -17,6 +17,8 @@ from forge_io.exceptions import (
     ImageDecodeError,
     OCIOConfigError,
     OCIOTransformError,
+    RedSdkUnavailableError,
+    SonyUnsupportedError,
     UnknownColorspaceTransformError,
     UnsupportedFileError,
 )
@@ -86,6 +88,8 @@ __all__ = [
     "ImageMetadata",
     "OCIOConfigError",
     "OCIOTransformError",
+    "RedSdkUnavailableError",
+    "SonyUnsupportedError",
     "UnknownColorspaceTransformError",
     "UnsupportedFileError",
     "UNKNOWN_COLORSPACE",

@@ -86,6 +86,8 @@ EXR, DPX, PNG, JPEG, TIFF via OIIO.
 
 **RED SDK discovery:** set `FORGE_RED_SDK_PATH` to the absolute path of the SDK shared library from your install. forge-io performs a coarse `ctypes.CDLL` gate only; symbol / ABI checks belong in **forge-io-red**.
 
+**Sony X-OCN:** forge-io does **not** register an `.mxf` reader. X-OCN decode requires [Sony Partner Program](https://pro.sony) SDK access (NDA-gated) or a facility-licensed partner path (e.g. nablet AMA). There is no bundled Sony decode here — use **Sony RAW Viewer's RAW Exporter** (or similar) to transcode X-OCN to EXR/DPX upstream, then read those formats with OIIO. The public type **`SonyUnsupportedError`** documents this policy for downstream code that may raise it when a future optional path is absent.
+
 ### §8 CI
 
 GitHub Actions uses a **pinned** [ASWF `ci-vfxall`](https://github.com/AcademySoftwareFoundation/aswf-docker) image so OIIO + OCIO match VFX expectations. Bump the tag deliberately when upgrading.
