@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.3.0
+
 **RED R3D decode via REDline subprocess backend.**
 
 - `RedRawReader` now has **two backends**, mirroring the ARRI v0.2.1 pattern:
