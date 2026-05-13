@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.2.1
+
 **ARRIRAW decode via ART-CMD subprocess backend.**
 
 - `ArriRawReader` now claims **both `.ari` and HDE-compressed `.arx`** extensions (case-insensitive). HDE decompression is provided by ART-CMD's bundled `libcodexhdedecoder`.
