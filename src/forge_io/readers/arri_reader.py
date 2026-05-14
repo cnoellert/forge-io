@@ -54,9 +54,10 @@ frame.
 
 Decode contract
 ---------------
-``read_pixels`` always requests ``AP0/D60/linear`` ACES AP0 scene-linear
+``read_pixels`` always requests ART's ``AP0/D60/linear`` (ACES AP0 scene-linear)
 output from ART-CMD (uncompressed 16-bit half-float EXR), and reports
-``source_colorspace="AP0/D60/linear"``. Downstream OCIO transforms
+``source_colorspace="ACES2065-1"`` (OCIO-canonical for the same space).
+Downstream OCIO transforms
 operate on a known, camera-independent space. CPU render platform
 (``--render-platform cpu``) is forced for bit-stable VFX output.
 """
@@ -83,12 +84,19 @@ FORGE_ARRI_ART_PATH_ENV = "FORGE_ARRI_ART_PATH"
 
 # ART-CMD invocation defaults. Scene-linear ACES AP0 is ART's own default and
 # the standard VFX intermediate; CPU platform is forced for deterministic decode.
+# ``_ART_TARGET_COLORSPACE`` is the string ART-CMD itself accepts on its
+# ``--target-colorspace`` argument; do not change without verifying ART-CMD's
+# argument grammar.
 _ART_TARGET_COLORSPACE = "AP0/D60/linear"
 _ART_VIDEO_CODEC = "exr_uncompressed/f16"
 _ART_RENDER_PLATFORM = "cpu"
 
-# Reported as source_colorspace on the public Image — matches what ART decoded to.
-_ART_SOURCE_COLORSPACE = _ART_TARGET_COLORSPACE
+# Reported as ``source_colorspace`` on the public Image. The pixels ART decodes
+# to "AP0/D60/linear" are bit-identical to OCIO's canonical ``ACES2065-1``
+# (AP0 primaries, D60 white, linear transfer). We emit the OCIO-canonical name
+# so downstream OCIO transforms (configs in the wild use ``ACES2065-1``, not
+# ``AP0/D60/linear``) resolve without an ``assume_source`` override.
+_ART_SOURCE_COLORSPACE = "ACES2065-1"
 
 _FRAME_NUMBER_RE = re.compile(r"\.(\d+)\.(?:ari|arx)$", re.IGNORECASE)
 

@@ -345,8 +345,8 @@ def test_live_redline_decodes_one_frame_to_rwg_linear(
     img = read(clip)
     assert img.pixels.dtype == np.float32
     assert img.pixels.ndim == 3 and img.pixels.shape[2] == 3
-    assert img.source_colorspace == "REDWideGamutRGB/linear"
-    assert img.colorspace == "REDWideGamutRGB/linear"  # no working_space transform
+    assert img.source_colorspace == "Linear REDWideGamutRGB"
+    assert img.colorspace == "Linear REDWideGamutRGB"  # no working_space transform
     assert img.bit_depth == 16
     assert np.all(np.isfinite(img.pixels))
     # Scene-linear: max can well exceed 1.0 (specular highlights).
@@ -361,7 +361,7 @@ def test_live_redline_metadata_only_no_pixel_decode(
     clip = _live_clip_or_skip()
     monkeypatch.setattr(red_reader, "_red_sdk_available", lambda: False)
     meta = read_metadata(clip)
-    assert meta.source_colorspace == "REDWideGamutRGB/linear"
+    assert meta.source_colorspace == "Linear REDWideGamutRGB"
     assert "redline_meta" in meta.raw_header
     assert meta.resolution is not None
     w, h = meta.resolution

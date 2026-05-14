@@ -303,8 +303,8 @@ def test_live_art_cmd_decodes_one_frame_to_aces_ap0_linear(
     img = read(frame)
     assert img.pixels.dtype == np.float32
     assert img.pixels.ndim == 3 and img.pixels.shape[2] == 3
-    assert img.source_colorspace == "AP0/D60/linear"
-    assert img.colorspace == "AP0/D60/linear"  # no working_space transform
+    assert img.source_colorspace == "ACES2065-1"
+    assert img.colorspace == "ACES2065-1"  # no working_space transform
     assert img.bit_depth == 16
     assert np.all(np.isfinite(img.pixels))
 
@@ -317,7 +317,7 @@ def test_live_art_cmd_metadata_only_no_pixel_decode(
     frame = _live_clip_or_skip()
     monkeypatch.setattr(arri_reader, "_arri_sdk_available", lambda: False)
     meta = read_metadata(frame)
-    assert meta.source_colorspace == "AP0/D60/linear"
+    assert meta.source_colorspace == "ACES2065-1"
     assert "art_cmd_export" in meta.raw_header
     # ARRIRAW always has an Image Size set and Project Rate set in the export.
     assert meta.resolution is not None

@@ -22,7 +22,7 @@ Backends (selected at call time, in order):
    forge-io shells out per call: decodes one frame to REDWideGamutRGB
    scene-linear half-float EXR (``--format 2 --res 1 --colorSpace 25
    --gammaCurve -1 --useMeta``), reads it back via OIIO, returns
-   ``source_colorspace="REDWideGamutRGB/linear"``. Downstream OCIO transforms
+   ``source_colorspace="Linear REDWideGamutRGB"``. Downstream OCIO transforms
    operate on that known intermediate. ``read_metadata`` uses
    ``--printMeta 1`` (the ``Key:\\tValue`` "normal" format) for header-only
    reads (no pixel decode).
@@ -39,8 +39,9 @@ Decode contract
 (``--colorSpace 25``) and **linear transfer** (``--gammaCurve -1``)
 regardless of source. For IPP2 clips this is the natural default; for
 Legacy clips REDline applies its internal Legacy→IPP2 transform.
-``source_colorspace`` is reported as ``"REDWideGamutRGB/linear"`` either
-way — paralleling the ARRI ART-CMD backend's ``"AP0/D60/linear"`` posture:
+``source_colorspace`` is reported as ``"Linear REDWideGamutRGB"`` either
+way (OCIO 2.x studio-config canonical) — paralleling the ARRI ART-CMD
+backend's ``"ACES2065-1"`` posture:
 trust the vendor's authoritative color science, land downstream OCIO on a
 known wide-gamut linear intermediate.
 
@@ -72,14 +73,20 @@ FORGE_RED_REDLINE_PATH_ENV = "FORGE_RED_REDLINE_PATH"
 
 # REDline invocation defaults. Scene-linear REDWideGamutRGB is the natural
 # IPP2 output and the standard wide-gamut intermediate for VFX; for non-IPP2
-# clips REDline applies its internal transform to the same target.
+# clips REDline applies its internal transform to the same target. The numeric
+# codes are what REDline itself accepts on its command line.
 _REDLINE_COLORSPACE_CODE = "25"  # REDWideGamutRGB (per `REDline --help`)
 _REDLINE_GAMMA_CODE = "-1"  # linear (per `REDline --help`)
 _REDLINE_FORMAT_EXR = "2"  # OpenEXR
 _REDLINE_RES_FULL = "1"  # full resolution
 
-# Reported as source_colorspace on the public Image — what REDline decoded to.
-_REDLINE_SOURCE_COLORSPACE = "REDWideGamutRGB/linear"
+# Reported as ``source_colorspace`` on the public Image. Matches the OCIO 2.x
+# studio config canonical name for REDWideGamutRGB primaries + linear transfer.
+# Facility OCIO configs that don't yet include this colorspace will need it
+# added (no major Flame-bundled config has it as of 2026.0) — alias to ACEScg
+# in your project_custom_config.ocio for a CV-acceptable approximation if you
+# don't want to add a proper RWG → sRGB transform.
+_REDLINE_SOURCE_COLORSPACE = "Linear REDWideGamutRGB"
 
 _NO_BACKEND_MSG = (
     "RED R3D (.r3d) requires either:\n"

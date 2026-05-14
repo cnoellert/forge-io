@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## v0.3.2
+
+**OCIO-canonical source_colorspace names for ARRI and RED.**
+
+Decoders still produce the same pixels, but the reported `source_colorspace` string now matches names that real-world OCIO configs actually use, so downstream callers no longer need an `assume_source` translation table to make `working_space=` transforms resolve.
+
+- `ArriRawReader.source_colorspace`: `"AP0/D60/linear"` → **`"ACES2065-1"`** (OCIO-canonical for AP0 primaries + D60 white + linear transfer — exactly what ART-CMD decodes to). The ART-CMD argument string (`--target-colorspace AP0/D60/linear`) is unchanged; only the public reporting name changed.
+- `RedRawReader.source_colorspace`: `"REDWideGamutRGB/linear"` → **`"Linear REDWideGamutRGB"`** (OCIO 2.x studio-config canonical name). REDline CLI codes (`--colorSpace 25 --gammaCurve -1`) are unchanged.
+- Live and unit tests updated. Other reader internals untouched.
+
+Caveat for RED: most Flame-bundled OCIO configs (including `flame_core_config` and `aces2.0_config` as of 2026.0) do not yet ship a `Linear REDWideGamutRGB` colorspace. Facilities using forge-io for RED reads should add one to their `project_custom_config.ocio` overlay, or alias it to `ACEScg` for a CV-acceptable approximation if exact color isn't required.
+
+Breaking for callers that assert on the literal old strings; non-breaking for any caller that feeds `source_colorspace` directly to OCIO (it now resolves where it didn't before).
+
 ## v0.3.1
 
 **RED R3D per-frame decode.**
