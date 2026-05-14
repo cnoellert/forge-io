@@ -21,8 +21,13 @@ The published package depends only on **NumPy**; **`import OpenImageIO`** and **
 PyPI redistribution is **deferred** (see project policy). Until then, pin a **git tag**:
 
 ```bash
-pip install "forge-io @ git+https://github.com/cnoellert/forge-io.git@v0.2.2"
+pip install "forge-io @ git+https://github.com/cnoellert/forge-io.git@v0.3.2"
 ```
+
+**v0.3.x highlights:**
+- `v0.3.0` — RED `.r3d` decode via REDline subprocess backend.
+- `v0.3.1` — Per-frame R3D selection: `read(path, frame_index=N)` forwards to REDline `--start N --end N`. Reader protocol gained `**opts` plumbing.
+- `v0.3.2` — Reader-emitted `source_colorspace` strings switched to OCIO-canonical names: ARRI → `ACES2065-1`, RED → `Linear REDWideGamutRGB`. Decoded pixels unchanged; transforms now resolve in real-world OCIO configs without an `assume_source` translation table.
 
 For private forks, substitute the repo URL; SSH works the same way (`git+ssh://git@github.com/...`). Internal indices (devpi, Artifactory, GitHub Packages) are fine if your org already uses one—this package does not require a specific host.
 
@@ -30,10 +35,14 @@ For private forks, substitute the repo URL; SSH works the same way (`git+ssh://g
 
 ## Public API
 
-- `read(path, *, working_space=None, assume_source=None, ocio_config=None) -> Image`
-- `read_frame(pattern, frame_idx, *, ...) -> Image`
+- `read(path, *, working_space=None, assume_source=None, ocio_config=None, frame_index=0) -> Image`
+- `read_frame(pattern, frame_idx, *, working_space=None, assume_source=None, ocio_config=None) -> Image`
 - `read_metadata(path) -> ImageMetadata`
 - `resolve_pattern(pattern, frame_idx) -> str`
+
+`read()` operates on single files. `frame_index` (v0.3.1+) is the 0-based intra-clip frame for single-file raw clips that contain multiple frames internally (e.g. RED `.r3d` → forwarded to REDline `--start N --end N`); readers that don't support intra-clip selection (OIIO, ARRI single-frame `.ari/.arx`) ignore it.
+
+`read_frame()` is for image sequences — it resolves `pattern + frame_idx` to a path via `resolve_pattern` and calls `read()`. Use it for EXR/DPX/PNG sequences and for **ARRI `.ari/.arx`** (which are one-file-per-frame on disk despite being raw — the filename carries the frame number).
 
 `Image` / `ImageMetadata` carry **`metadata`** (canonical, semver-stable keys, always present; use `None` when a field does not apply) and **`raw_header`** (best-effort OIIO/vendor passthrough; **not** semver-stable).
 
@@ -74,19 +83,19 @@ Frozen keys: `resolution`, `pixel_aspect`, `timecode`, `framerate` — **always 
 
 Where the canonical OCIO config lives (per-project vs machine vs repo) is an **operational** choice for each pipeline; this library only requires that **`OCIO` is set**, **`ocio_config=` is passed**, or callers stay on the decode-only path (`working_space=None`).
 
-### §7 Formats in v0.1
+### §7 Formats
 
-EXR, DPX, PNG, JPEG, TIFF via OIIO.
+EXR, DPX, PNG, JPEG, TIFF via OIIO. ARRIRAW + RED R3D via vendor backends (subprocess today, pybind11 future).
 
 **ARRIRAW (`.ari` and HDE-compressed `.arx`):** a reader is **registered** (before OIIO in the dispatch list) with **two backends**:
 
 1. **ARRI Image SDK (pybind11)** — `FORGE_ARRI_SDK_PATH` points at the SDK shared library; real decode lives in the eventual **forge-io-arri** sibling package. **Pending Partner Program SDK access** — the gate here is currently a coarse `ctypes.CDLL` load only.
 
-2. **ART-CMD subprocess** — `FORGE_ARRI_ART_PATH` points at the `art-cmd` binary from [ARRI Reference Tools](https://www.arri.com/en/learn-help/learn-help-camera-system/tools/arri-reference-tool). forge-io shells out per call: decodes one frame to ACES AP0 scene-linear EXR (`AP0/D60/linear`, `exr_uncompressed/f16`, `--render-platform cpu` for determinism), reads it back via OIIO, returns `source_colorspace="AP0/D60/linear"`. Downstream OCIO transforms operate on that known intermediate. `read_metadata` uses `art-cmd export --skip-audio --skip-look` for header-only reads (no pixel decode).
+2. **ART-CMD subprocess** — `FORGE_ARRI_ART_PATH` points at the `art-cmd` binary from [ARRI Reference Tools](https://www.arri.com/en/learn-help/learn-help-camera-system/tools/arri-reference-tool). forge-io shells out per call: decodes one frame to ACES AP0 scene-linear EXR (ART-CMD is invoked with `--target-colorspace AP0/D60/linear --video-codec exr_uncompressed/f16 --render-platform cpu` for determinism), reads it back via OIIO, returns **`source_colorspace="ACES2065-1"`** (v0.3.2+ — the OCIO-canonical name for AP0 primaries + D60 white + linear transfer; pre-v0.3.2 used the literal ART-CMD string `"AP0/D60/linear"`). Downstream OCIO transforms operate on that known intermediate. `read_metadata` uses `art-cmd export --skip-audio --skip-look` for header-only reads (no pixel decode).
 
 When **both** backends are configured, the SDK path takes precedence (faster, no disk roundtrip). When **neither** is configured, `ArriSdkUnavailableError` names both env vars so the user knows their options.
 
-**Sequence semantics:** ART-CMD's `--start N` is **offset within the clip**, not the absolute frame number. forge-io scans the clip directory to find the lowest frame index and computes the offset internally — callers always pass the absolute frame number they want.
+**Sequence semantics:** `.ari/.arx` are **one file per frame on disk** (the frame number is in the filename), so callers use `read_frame(pattern, frame_idx)` — or `read(specific_frame_path)` directly. ART-CMD's `--start N` is offset within the clip; forge-io scans the clip directory to find the lowest frame index and computes the offset internally so callers always pass the absolute frame number they want. The `frame_index` kwarg on `read()` is **not** used for ARRI (it's for single-file multi-frame clips like R3D).
 
 **macOS gotcha:** Safari-downloaded ART-CMD bundles are quarantined; if `art-cmd` fails to load its dylibs with "code signature ... not valid", clear the quarantine:
 
@@ -100,11 +109,15 @@ forge-io does **not** redistribute either the ARRI Image SDK or ART-CMD. The SDK
 
 1. **R3D SDK pybind11** — `FORGE_RED_SDK_PATH` points at the SDK shared library; real decode lives in the eventual **forge-io-red** sibling package (see [`RED_BINDING_PLAN.md`](RED_BINDING_PLAN.md)). **Pending RED Developer Program SDK access** — the gate here is currently a coarse `ctypes.CDLL` load only. Note: the `REDR3D.dylib` shipped inside consumer host apps (REDCINE-X, DaVinci Resolve, Nuke, Mocha, Fusion, SynthEyes, BLG) is symbol-stripped — the coarse gate would pass but the eventual sibling will fail to bind. Point this env var at the actual SDK download, not a host-app dylib.
 
-2. **REDline subprocess** — `FORGE_RED_REDLINE_PATH` points at the `REDline` binary bundled with [REDCINE-X PRO](https://www.red.com/downloads) (free download). On macOS the path is typically `/Applications/REDCINE-X Professional/REDCINE-X PRO.app/Contents/MacOS/REDline`. forge-io shells out per call: decodes one frame to REDWideGamutRGB scene-linear half-float EXR (`--format 2 --res 1 --colorSpace 25 --gammaCurve -1 --useMeta`), reads it back via OIIO, returns `source_colorspace="REDWideGamutRGB/linear"`. Downstream OCIO transforms operate on that known intermediate. `read_metadata` uses `--printMeta 1` for header-only reads (no pixel decode).
+2. **REDline subprocess** — `FORGE_RED_REDLINE_PATH` points at the `REDline` binary bundled with [REDCINE-X PRO](https://www.red.com/downloads) (free download). On macOS the path is typically `/Applications/REDCINE-X Professional/REDCINE-X PRO.app/Contents/MacOS/REDline`. forge-io shells out per call: decodes one frame to REDWideGamutRGB scene-linear half-float EXR (REDline is invoked with `--format 2 --res 1 --colorSpace 25 --gammaCurve -1 --useMeta --start N --end N`), reads it back via OIIO, returns **`source_colorspace="Linear REDWideGamutRGB"`** (v0.3.2+ — OCIO 2.x studio-config canonical name; pre-v0.3.2 used `"REDWideGamutRGB/linear"`). Downstream OCIO transforms operate on that known intermediate. `read_metadata` uses `--printMeta 1` for header-only reads (no pixel decode).
+
+**Per-frame selection (v0.3.1+):** `.r3d` is a single-file multi-frame clip. Pass `read(path, frame_index=N)` (or via downstream wrappers) to select the 0-based intra-clip frame; forge-io forwards N as REDline `--start N --end N`. Negative values raise `ValueError`; out-of-range values surface as `ImageDecodeError` via REDline's own rejection. Pre-v0.3.1 always decoded frame 0.
+
+**Facility OCIO note:** `Linear REDWideGamutRGB` is the OCIO 2.x studio-config canonical name, but most Flame-bundled OCIO configs (`flame_core_config`, `aces2.0_config`) **do not ship that colorspace** as of Flame 2026.0. For OCIO transforms `Linear REDWideGamutRGB → working_space` to resolve, add the colorspace to your facility's `project_custom_config.ocio` overlay (real RWG → ACES2065-1 math) or alias it to `ACEScg` for a CV-acceptable approximation (small gamut shift, transfer is correct). ARRI's emitted `ACES2065-1` is in every ACES-shipped config.
 
 When **both** backends are configured, the SDK path takes precedence. When **neither** is configured, `RedSdkUnavailableError` names both env vars so the user knows their options.
 
-**Decode contract:** the REDline backend pins output to REDWideGamutRGB primaries + linear transfer regardless of the source clip's color science. For IPP2 clips this is the natural default; for Legacy clips REDline applies its internal Legacy→IPP2 transform. forge-io trusts RED's authoritative color science here, paralleling the ARRI ART-CMD backend's `AP0/D60/linear` posture.
+**Decode contract:** the REDline backend pins output to REDWideGamutRGB primaries + linear transfer regardless of the source clip's color science. For IPP2 clips this is the natural default; for Legacy clips REDline applies its internal Legacy→IPP2 transform. forge-io trusts RED's authoritative color science here, paralleling the ARRI ART-CMD backend's `ACES2065-1` posture — both readers land downstream OCIO on a known wide-gamut linear intermediate.
 
 forge-io does **not** redistribute the R3D SDK or REDline. The SDK is gated behind the [RED Developer Program](https://www.red.com/developers); REDline is bundled inside the free REDCINE-X PRO download under its EULA (which permits subprocess invocation by third-party tools — no copying / modification / transfer required).
 
