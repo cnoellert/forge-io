@@ -240,15 +240,19 @@ def _canonical_from_exr_attribs(
     )
 
 
-def _decode_via_redline(redline: Path, path: Path) -> ReaderDecode:
+def _decode_via_redline(
+    redline: Path, path: Path, frame_index: int = 0
+) -> ReaderDecode:
     """Decode one frame of an ``.R3D`` clip via REDline subprocess.
 
-    v0.3 decodes the **first frame** of the clip (``--start 0 --end 0``);
-    a future kwarg may expose per-frame selection. The decode contract:
-    full-resolution REDWideGamutRGB scene-linear half-float OpenEXR,
-    written to a temp dir and read back via OIIO. Canonical metadata is
-    harvested from the EXR's ``extra_attribs`` REDline forwards there.
+    ``frame_index`` is the 0-based intra-clip frame to decode (forwarded as
+    ``--start N --end N`` to REDline). The decode contract: full-resolution
+    REDWideGamutRGB scene-linear half-float OpenEXR, written to a temp dir
+    and read back via OIIO. Canonical metadata is harvested from the EXR's
+    ``extra_attribs`` REDline forwards there.
     """
+    if frame_index < 0:
+        raise ValueError(f"frame_index must be >= 0, got {frame_index}")
     with tempfile.TemporaryDirectory(prefix="forge-io-red-") as tmp:
         tmp_dir = Path(tmp)
         _run_redline(
@@ -258,9 +262,9 @@ def _decode_via_redline(redline: Path, path: Path) -> ReaderDecode:
                 "--i",
                 str(path),
                 "--start",
-                "0",
+                str(frame_index),
                 "--end",
-                "0",
+                str(frame_index),
                 "--format",
                 _REDLINE_FORMAT_EXR,
                 "--res",
@@ -394,7 +398,8 @@ class RedRawReader(Reader):
             return _metadata_via_redline(redline, p)
         raise RedSdkUnavailableError(_NO_BACKEND_MSG)
 
-    def read_pixels(self, path: Path) -> ReaderDecode:
+    def read_pixels(self, path: Path, **opts: Any) -> ReaderDecode:
+        frame_index = int(opts.get("frame_index", 0))
         p = path.expanduser().resolve()
         if not p.is_file():
             raise FileNotFoundError(str(p))
@@ -404,7 +409,7 @@ class RedRawReader(Reader):
             )
         redline = _red_redline_path()
         if redline is not None:
-            return _decode_via_redline(redline, p)
+            return _decode_via_redline(redline, p, frame_index=frame_index)
         raise RedSdkUnavailableError(_NO_BACKEND_MSG)
 
 

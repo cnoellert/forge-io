@@ -173,9 +173,10 @@ def test_redline_backend_invoked_when_sdk_closed_and_redline_open(
 
     called: dict[str, object] = {}
 
-    def fake_decode(redline: Path, path: Path) -> object:
+    def fake_decode(redline: Path, path: Path, frame_index: int = 0) -> object:
         called["redline"] = redline
         called["path"] = path
+        called["frame_index"] = frame_index
         raise RuntimeError("decode-stub-reached")
 
     monkeypatch.setattr(red_reader, "_decode_via_redline", fake_decode)
@@ -185,6 +186,29 @@ def test_redline_backend_invoked_when_sdk_closed_and_redline_open(
         read(clip)
     assert called["redline"] == sentinel
     assert Path(str(called["path"])).name == "clip.r3d"
+    assert called["frame_index"] == 0
+
+
+def test_red_frame_index_forwarded_to_decoder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """forge_io.read(frame_index=N) forwards N to the REDline backend."""
+    monkeypatch.setattr(red_reader, "_red_sdk_available", lambda: False)
+    sentinel = tmp_path / "fake-REDline"
+    monkeypatch.setattr(red_reader, "_red_redline_path", lambda: sentinel)
+
+    seen: dict[str, object] = {}
+
+    def fake_decode(redline: Path, path: Path, frame_index: int = 0) -> object:
+        seen["frame_index"] = frame_index
+        raise RuntimeError("stub")
+
+    monkeypatch.setattr(red_reader, "_decode_via_redline", fake_decode)
+    clip = tmp_path / "clip.r3d"
+    clip.write_bytes(b"")
+    with pytest.raises(RuntimeError, match="stub"):
+        read(clip, frame_index=42)
+    assert seen["frame_index"] == 42
 
 
 # ---------- REDline parser + canonical builder (unit) --------------------

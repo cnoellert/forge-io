@@ -403,7 +403,7 @@ class ArriRawReader(Reader):
             return _metadata_via_art_cmd(art, p)
         raise ArriSdkUnavailableError(_NO_BACKEND_MSG)
 
-    def read_pixels(self, path: Path) -> ReaderDecode:
+    def read_pixels(self, path: Path, **opts: Any) -> ReaderDecode:
         p = path.expanduser().resolve()
         if not p.is_file():
             raise FileNotFoundError(str(p))

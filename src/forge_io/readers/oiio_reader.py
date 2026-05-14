@@ -281,7 +281,7 @@ class OIIOReader(Reader):
     def read_header_only(self, path: Path) -> ImageMetadata:
         return _read_header_metadata(path)
 
-    def read_pixels(self, path: Path) -> ReaderDecode:
+    def read_pixels(self, path: Path, **opts: Any) -> ReaderDecode:
         suf = path.suffix.lower()
         if suf == ".exr":
             pixels, bits, res, src_cs, meta, raw = _read_exr_rgb(path)

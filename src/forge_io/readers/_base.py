@@ -37,5 +37,10 @@ class Reader(ABC):
         """Must succeed for any path ``can_read`` accepts."""
 
     @abstractmethod
-    def read_pixels(self, path: Path) -> ReaderDecode:
-        """Return float32 RGB (H, W, 3), native range."""
+    def read_pixels(self, path: Path, **opts: Any) -> ReaderDecode:
+        """Return float32 RGB (H, W, 3), native range.
+
+        ``opts`` is a free-form dict for per-reader extensions (e.g. RED
+        passes ``frame_index`` for intra-clip frame selection). Readers that
+        don't recognize a key should ignore it.
+        """

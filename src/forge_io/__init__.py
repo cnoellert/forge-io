@@ -30,11 +30,19 @@ def read(
     working_space: str | None = None,
     assume_source: str | None = None,
     ocio_config: str | Path | None = None,
+    frame_index: int = 0,
 ) -> Image:
-    """Read an image file and return float32 RGB (H, W, 3)."""
+    """Read an image file and return float32 RGB (H, W, 3).
+
+    ``frame_index`` is the 0-based intra-clip frame for single-file raw
+    clips (e.g. RED ``.r3d``). Readers that don't support intra-clip frame
+    selection (OIIO, ARRI single-frame) ignore it. For image sequences,
+    use :func:`read_frame` (which resolves a pattern + index to a path)
+    instead.
+    """
     p = Path(path).expanduser().resolve()
     reader = get_reader(p)
-    dec = reader.read_pixels(p)
+    dec = reader.read_pixels(p, frame_index=frame_index)
     pixels = np.ascontiguousarray(dec.pixels, dtype=np.float32)
     colorspace = dec.source_colorspace
     if working_space is not None:

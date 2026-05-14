@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## v0.3.1
+
+**RED R3D per-frame decode.**
+
+- `read()` gains `frame_index: int = 0` — forwarded to the active reader via the new `**opts` plumbing on `Reader.read_pixels`. OIIO and ARRI readers ignore it; `RedRawReader` consumes it.
+- `_decode_via_redline` now takes `frame_index` and renders REDline's `--start N --end N` from it, replacing the hardcoded `--start 0 --end 0` of v0.3.0. Negative values raise `ValueError`. Out-of-range values surface as REDline subprocess failures via `ImageDecodeError` (REDline rejects them).
+- Reader Protocol: `Reader.read_pixels(self, path, **opts)` is the new contract. Subclasses that don't recognize a key should ignore it. Backwards-compatible for callers using only `read()` / `read_frame()` / `read_metadata()`.
+- For image sequences continue using `read_frame(pattern, frame_idx, ...)` (resolves a pattern + frame number to a path). `frame_index` on `read()` is for single-file clip semantics.
+
 ## v0.3.0
 
 **RED R3D decode via REDline subprocess backend.**
