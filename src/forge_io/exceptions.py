@@ -33,6 +33,15 @@ class RedSdkUnavailableError(ForgeIOError):
     """R3D decode was requested but the RED SDK is not available or not wired in forge-io core."""
 
 
+class FFmpegUnavailableError(ForgeIOError):
+    """Container decode was requested but neither ``ffmpeg`` nor ``ffprobe`` is available.
+
+    forge-io does not bundle ffmpeg. Install it (Homebrew, conda-forge, distro
+    package, static build) so both binaries are on ``PATH``, or point
+    ``FORGE_FFMPEG_PATH`` / ``FORGE_FFPROBE_PATH`` at them explicitly.
+    """
+
+
 class SonyUnsupportedError(ForgeIOError):
     """Sony X-OCN decode is not available in forge-io.
 

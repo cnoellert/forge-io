@@ -21,13 +21,14 @@ The published package depends only on **NumPy**; **`import OpenImageIO`** and **
 PyPI redistribution is **deferred** (see project policy). Until then, pin a **git tag**:
 
 ```bash
-pip install "forge-io @ git+https://github.com/cnoellert/forge-io.git@v0.3.2"
+pip install "forge-io @ git+https://github.com/cnoellert/forge-io.git@v0.4.0"
 ```
 
-**v0.3.x highlights:**
+**Recent highlights:**
 - `v0.3.0` — RED `.r3d` decode via REDline subprocess backend.
 - `v0.3.1` — Per-frame R3D selection: `read(path, frame_index=N)` forwards to REDline `--start N --end N`. Reader protocol gained `**opts` plumbing.
 - `v0.3.2` — Reader-emitted `source_colorspace` strings switched to OCIO-canonical names: ARRI → `ACES2065-1`, RED → `Linear REDWideGamutRGB`. Decoded pixels unchanged; transforms now resolve in real-world OCIO configs without an `assume_source` translation table.
+- `v0.4.0` — Editorial/delivery container reader (`FFmpegReader`): `.mov` / `.mp4` / `.m4v` / `.avi` / `.mkv` decode via `ffmpeg` + `ffprobe`, frame-accurate (`read(path, frame_index=N)`), `source_colorspace="unknown"`. New `FFmpegUnavailableError`.
 
 For private forks, substitute the repo URL; SSH works the same way (`git+ssh://git@github.com/...`). Internal indices (devpi, Artifactory, GitHub Packages) are fine if your org already uses one—this package does not require a specific host.
 
@@ -121,7 +122,13 @@ When **both** backends are configured, the SDK path takes precedence. When **nei
 
 forge-io does **not** redistribute the R3D SDK or REDline. The SDK is gated behind the [RED Developer Program](https://www.red.com/developers); REDline is bundled inside the free REDCINE-X PRO download under its EULA (which permits subprocess invocation by third-party tools — no copying / modification / transfer required).
 
-**Sony X-OCN:** forge-io does **not** register an `.mxf` reader. X-OCN decode requires [Sony Partner Program](https://pro.sony) SDK access (NDA-gated) or a facility-licensed partner path (e.g. nablet AMA). There is no bundled Sony decode here — use **Sony RAW Viewer's RAW Exporter** (or similar) to transcode X-OCN to EXR/DPX upstream, then read those formats with OIIO. The public type **`SonyUnsupportedError`** documents this policy for downstream code that may raise it when a future optional path is absent.
+**Editorial/delivery containers (`.mov` / `.mp4` / `.m4v` / `.avi` / `.mkv`) (v0.4.0+):** a reader is **registered** (`FFmpegReader`, after camera-raw, before OIIO) for common gamma-encoded containers — QuickTime ProRes / H.264 `.mov`, `.mp4`, etc. A single **`ffmpeg`** subprocess decodes one frame to a 16-bit RGB PNG, read back via OIIO → `float32 (H, W, 3)`; **`ffprobe`** supplies header metadata for `read_metadata` (no pixel decode). forge-io does **not** bundle ffmpeg — both binaries are discovered on `PATH`, or via `FORGE_FFMPEG_PATH` / `FORGE_FFPROBE_PATH`; if neither is found, **`FFmpegUnavailableError`** names the options.
+
+- **Frame-accurate (v0.4.0+):** `read(path, frame_index=N)` selects frame N by **frame number** (`-vf select='gte(n\,N)' -frames:v 1`, decode-from-head), exact for long-GOP codecs. This avoids input-side `-ss` time seeking (which can land ±1 frame off on fractional rates or a wrong assumed fps). Negative values raise `ValueError`; out-of-range surfaces as `ImageDecodeError` from ffmpeg.
+- **Colorspace:** reported as **`source_colorspace="unknown"`** — same posture as PNG/JPEG/DPX. forge-io does not infer colorspace from container tags or filenames; apply `working_space` with an explicit `assume_source` (e.g. the host segment's colorspace). Raw ffprobe color tags (`color_primaries` / `color_transfer` / `color_space` / `color_range`) are kept in `raw_header`.
+- **Metadata:** canonical `resolution`, `framerate` (`r_frame_rate`), `pixel_aspect` (SAR), `timecode`; source bit depth from `bits_per_raw_sample` (else `pix_fmt`, else 8); frame count + fps + codec in `raw_header`.
+
+**Sony X-OCN:** forge-io does **not** register an `.mxf` reader. X-OCN decode requires [Sony Partner Program](https://pro.sony) SDK access (NDA-gated) or a facility-licensed partner path (e.g. nablet AMA). There is no bundled Sony decode here — use **Sony RAW Viewer's RAW Exporter** (or similar) to transcode X-OCN to EXR/DPX upstream, then read those formats with OIIO. The public type **`SonyUnsupportedError`** documents this policy for downstream code that may raise it when a future optional path is absent. **Note:** `.mxf` is deliberately left off `FFmpegReader` too — it cannot be disambiguated at the extension level between editorial MXF (DNxHD/XDCAM, ffmpeg-decodable) and X-OCN raw. Editorial-MXF support is a future item pending that reconciliation.
 
 **CinemaDNG (`.dng`):** forge-io routes `.dng` through **`OIIOReader`** → OpenImageIO → **LibRaw** (or the Adobe DNG SDK path) when the build includes a raw/DNG input plugin. ASWF **`ci-vfxall`** images used in CI ship that stack. **LibRaw version bumps can change decoded pixels** for real camera Bayer DNGs; pin versions in production and consider **[`rawtoaces`](https://github.com/AcademySoftwareFoundation/rawtoaces)** for ACES pipelines. The committed test fixture **`solid_rgb.dng`** is intentionally a **small TIFF float RGB bitstream** under a `.dng` suffix (≤ 1 KiB) so CI stays deterministic; it does **not** exercise LibRaw demosaic variance — add a separate golden when a tiny Bayer sample is available.
 

@@ -13,6 +13,7 @@ from forge_io._types import UNKNOWN_COLORSPACE, Image, ImageMetadata
 from forge_io.exceptions import (
     AmbiguousExrError,
     ArriSdkUnavailableError,
+    FFmpegUnavailableError,
     ForgeIOError,
     ImageDecodeError,
     OCIOConfigError,
@@ -90,6 +91,7 @@ def read_metadata(path: str | Path) -> ImageMetadata:
 __all__ = [
     "AmbiguousExrError",
     "ArriSdkUnavailableError",
+    "FFmpegUnavailableError",
     "ForgeIOError",
     "Image",
     "ImageDecodeError",

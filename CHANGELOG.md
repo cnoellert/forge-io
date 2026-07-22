@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## v0.4.0
+
+**Editorial/delivery container reader (ffmpeg) — `.mov` / `.mp4` / `.m4v` / `.avi` / `.mkv`.**
+
+`forge_io.read()` and `read_metadata()` now decode common editorial and delivery containers (QuickTime ProRes / H.264 `.mov`, `.mp4`, etc.). Previously these fell through to `UnsupportedFileError`; consumers (forge-align, forge-flow) worked around it by shelling `ffmpeg` themselves. That decode now lives in forge-io so every consumer gets it with consistent colorspace + metadata handling.
+
+- **New `FFmpegReader`** (`priority=8`, after camera-raw ARRI/RED, before OIIO). Registers `.mov`, `.mp4`, `.m4v`, `.avi`, `.mkv`.
+- **Backend:** a single `ffmpeg` subprocess decodes one frame to a 16-bit RGB PNG in a temp dir, read back via OIIO → `float32 (H, W, 3)`. `ffprobe` supplies header metadata (no pixel decode for `read_metadata`). forge-io does **not** bundle ffmpeg — both binaries are discovered on `PATH`, or via `FORGE_FFMPEG_PATH` / `FORGE_FFPROBE_PATH`; if neither is found, the new **`FFmpegUnavailableError`** names the options.
+- **Frame-accurate seeking:** `read(path, frame_index=N)` selects frame N by **frame number** (`-vf select='gte(n\,N)' -frames:v 1`, decode-from-head), which is exact for long-GOP codecs (H.264/H.265). This deliberately avoids input-side time seeking (`-ss` before `-i` computed from a caller-supplied fps), which can land ±1 frame off on fractional rates or when the assumed fps is wrong. Negative `frame_index` raises `ValueError`.
+- **Colorspace posture:** editorial containers report **`source_colorspace="unknown"`** — the same posture `OIIOReader` takes for PNG/JPEG/DPX. forge-io does not infer a colorspace from container tags or filenames; callers apply `working_space` with an explicit `assume_source`. The raw ffprobe color tags (`color_primaries` / `color_transfer` / `color_space` / `color_range`) are preserved in `raw_header`.
+- **Metadata:** canonical `resolution`, `framerate` (from `r_frame_rate` rational), `pixel_aspect` (SAR), and `timecode` (stream then container tag) are populated. Source bit depth is reported from `bits_per_raw_sample` (else inferred from `pix_fmt`, else 8). Frame count + fps + codec/pixel-format + color tags are stashed in `raw_header`.
+- **`.mxf` is intentionally not registered.** It cannot be disambiguated at the extension level between editorial MXF (DNxHD/XDCAM, ffmpeg-decodable) and Sony X-OCN raw (not ffmpeg-decodable), and forge-io's Sony policy keeps `.mxf` unregistered so X-OCN raises `UnsupportedFileError` (see README §7). Editorial-MXF support is a future item pending that reconciliation.
+- New public export: `FFmpegUnavailableError`. Live e2e tests synthesize clips with ffmpeg (ffv1 lossless exactness, ffprobe metadata, libx264 long-GOP frame accuracy) and run whenever ffmpeg is on `PATH`.
+
+Non-breaking: no change to existing OIIO/ARRI/RED reads or the public `read()` / `read_metadata()` signatures.
+
 ## v0.3.2
 
 **OCIO-canonical source_colorspace names for ARRI and RED.**
