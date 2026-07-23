@@ -21,7 +21,7 @@ The published package depends only on **NumPy**; **`import OpenImageIO`** and **
 PyPI redistribution is **deferred** (see project policy). Until then, pin a **git tag**:
 
 ```bash
-pip install "forge-io @ git+https://github.com/cnoellert/forge-io.git@v0.5.0"
+pip install "forge-io @ git+https://github.com/cnoellert/forge-io.git@v0.6.0"
 ```
 
 **Recent highlights:**
@@ -30,6 +30,7 @@ pip install "forge-io @ git+https://github.com/cnoellert/forge-io.git@v0.5.0"
 - `v0.3.2` — Reader-emitted `source_colorspace` strings switched to OCIO-canonical names: ARRI → `ACES2065-1`, RED → `Linear REDWideGamutRGB`. Decoded pixels unchanged; transforms now resolve in real-world OCIO configs without an `assume_source` translation table.
 - `v0.4.0` — Editorial/delivery container reader (`FFmpegReader`): `.mov` / `.mp4` / `.m4v` / `.avi` / `.mkv` decode via `ffmpeg` + `ffprobe`, frame-accurate (`read(path, frame_index=N)`), `source_colorspace="unknown"`. New `FFmpegUnavailableError`.
 - `v0.5.0` — `.mxf` decode, essence-routed via ffprobe: editorial (ProRes/DNxHD) → `FFmpegReader`; ARRIRAW-in-MXF (ALEXA 35) → `ArriRawReader` single-file path → `ACES2065-1`; Sony X-OCN / unclassifiable → `UnsupportedFileError`.
+- `v0.6.0` — `assume_source` is **fill-unknown-only**: an authoritative declared `source_colorspace` (raw, embedded) wins over a caller hint; `assume_source` only fills when the file declares `unknown`. Consumers can pass a host colorspace uniformly without corrupting raw decodes.
 
 For private forks, substitute the repo URL; SSH works the same way (`git+ssh://git@github.com/...`). Internal indices (devpi, Artifactory, GitHub Packages) are fine if your org already uses one—this package does not require a specific host.
 
@@ -56,6 +57,7 @@ For private forks, substitute the repo URL; SSH works the same way (`git+ssh://g
 - **v0.1:** only explicit string attributes (e.g. `oiio:ColorSpace`, `colorspace` on the spec) count as “declared.” OpenEXR **chromaticities** blobs are **not** mapped to OCIO roles yet; if you need that, track it as a follow-up.
 - If nothing unambiguous is declared in headers → `source_colorspace == "unknown"` (exact lowercase string; no `None`, `""`, or `"Unknown"`).
 - `read(..., working_space=...)` with effective source `unknown` and no `assume_source` → **`UnknownColorspaceTransformError`** (OCIO path is not guessed).
+- **`assume_source` is fill-unknown-only (v0.6.0+):** it supplies the source colorspace **only when the file declares `unknown`**. A reader that declares an authoritative `source_colorspace` (raw → `ACES2065-1` / `Linear REDWideGamutRGB`; OIIO from embedded metadata) is **not** overridden by a caller hint — the declared CS wins. Callers can therefore pass a host segment's colorspace uniformly: it fills editorial containers/DPX and is safely ignored for authoritative raw decodes. (Pre-v0.6.0, `assume_source` overrode always. Forcing reinterpretation of a file that declares a real CS is intentionally not offered via `assume_source`; it would belong in an explicit `force_source_colorspace=`.)
 
 ### §2 DPX
 

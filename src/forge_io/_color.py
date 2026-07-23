@@ -27,6 +27,22 @@ def effective_source_colorspace(
     declared: str,
     assume_source: str | None,
 ) -> str:
+    """Resolve the colorspace to transform from — authoritative decode wins.
+
+    ``assume_source`` is **fill-unknown-only**: a reader that declares a real
+    ``source_colorspace`` (raw → ``ACES2065-1`` / ``Linear REDWideGamutRGB``;
+    OIIO from embedded metadata) is never second-guessed by a caller hint. The
+    hint only supplies the colorspace when the file itself declares
+    ``unknown``. When it stays ``unknown``, :func:`apply_working_space` raises
+    ``UnknownColorspaceTransformError`` with guidance.
+
+    Forcing a reinterpretation of a file that declares a real (possibly
+    mis-tagged) colorspace is intentionally *not* supported via
+    ``assume_source`` — that belongs in an explicit, loud opt-in
+    (``force_source_colorspace=``), not a silent side-effect of a hint.
+    """
+    if declared != UNKNOWN_COLORSPACE:
+        return declared
     if assume_source is not None and assume_source != UNKNOWN_COLORSPACE:
         return assume_source
     return declared

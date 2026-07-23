@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## v0.6.0
+
+**`assume_source` is now fill-unknown-only — authoritative declared colorspace wins.**
+
+`assume_source` previously **overrode** the reader's `source_colorspace` unconditionally. That contradicted the documented contract and silently corrupted authoritative decodes: a caller passing a host segment's colorspace as a hint would reinterpret already-canonical raw pixels (ARRIRAW → `ACES2065-1`) as the camera log encoding, producing the wrong OCIO transform.
+
+- `effective_source_colorspace(declared, assume_source)` now returns `declared` whenever the reader declared a real colorspace; `assume_source` fills the gap **only when `declared == "unknown"`**. `apply_working_space` is unchanged (still raises `UnknownColorspaceTransformError` when the effective CS stays `unknown`).
+- **Behavior change (2 rows):** `declared=ACES2065-1 + assume_source=ARRI LogC4` → now `ACES2065-1` (was `ARRI LogC4`); `declared=Rec.709 + assume_source=ACEScg` → now `Rec.709` (was `ACEScg`). Both become *more* correct — authoritative decodes stop being silently overridden.
+- **Unchanged:** raw reads with `assume_source=None`; `unknown`-declaring containers/DPX filled by a hint; `unknown` with no hint still raises.
+- Callers can now pass a host segment's colorspace **uniformly**: it fills editorial containers/DPX and is safely ignored for authoritative raw decodes — no per-essence CS-stripping needed downstream.
+- The one dropped capability — *forcing* reinterpretation of a file that declares a real (possibly mis-tagged) colorspace — is intentionally not served by `assume_source`; if ever needed it belongs in an explicit `force_source_colorspace=` (out of scope).
+
+Non-breaking for the common paths (raw-with-`None`, `unknown`-fill). Behavior-changing only for callers that passed an `assume_source` conflicting with an authoritative declared colorspace — where the old result was wrong.
+
 ## v0.5.0
 
 **MXF decode — editorial (ffmpeg) + ARRIRAW-in-MXF (ART-CMD), essence-routed.**
