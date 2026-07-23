@@ -1,4 +1,12 @@
-"""ARRIRAW (``.ari`` / ``.arx``) reader — two backends, same public surface.
+"""ARRIRAW (``.ari`` / ``.arx`` / MXF-wrapped) reader — two backends, same surface.
+
+Handles both ARRIRAW packagings: ``.ari``/``.arx`` sequences (one file per frame)
+and MXF-wrapped ARRIRAW (a single multi-frame ``.mxf``, e.g. ALEXA 35). The
+``.mxf`` extension is shared with editorial containers and Sony X-OCN, so it is
+claimed only when ffprobe essence classification identifies ARRIRAW (see
+``ffmpeg_reader._classify_mxf``); MXF decode uses ``--start N --duration 1`` on
+the single file (intra-clip ``frame_index``), while ``.ari``/``.arx`` compute a
+sequence offset from the filename.
 
 Backends (selected at call time, in order):
 
@@ -75,9 +83,14 @@ from typing import Any
 
 from forge_io._types import ImageMetadata, merge_canonical
 from forge_io.exceptions import ArriSdkUnavailableError, ImageDecodeError
+from forge_io.readers import ffmpeg_reader as _ffmpeg_reader
 from forge_io.readers._base import Reader, ReaderDecode
+from forge_io.readers.ffmpeg_reader import _MXF_ARRIRAW
 
+# .ari/.arx are one-file-per-frame sequences on disk; MXF-wrapped ARRIRAW is a
+# single multi-frame file (decoded by intra-clip frame_index, like RED .r3d).
 _ARRI_RAW_EXTENSIONS = frozenset({".ari", ".arx"})
+_ARRI_MXF_EXTENSION = ".mxf"
 
 FORGE_ARRI_SDK_PATH_ENV = "FORGE_ARRI_SDK_PATH"
 FORGE_ARRI_ART_PATH_ENV = "FORGE_ARRI_ART_PATH"
@@ -101,7 +114,7 @@ _ART_SOURCE_COLORSPACE = "ACES2065-1"
 _FRAME_NUMBER_RE = re.compile(r"\.(\d+)\.(?:ari|arx)$", re.IGNORECASE)
 
 _NO_BACKEND_MSG = (
-    "ARRIRAW (.ari / .arx) requires either:\n"
+    "ARRIRAW (.ari / .arx / MXF-wrapped) requires either:\n"
     f"  (1) the ARRI Image SDK ({FORGE_ARRI_SDK_PATH_ENV} pointing at the shared\n"
     "      library + the forge-io-arri sibling package — decode pending), or\n"
     f"  (2) ART-CMD ({FORGE_ARRI_ART_PATH_ENV} pointing at the art-cmd binary\n"
@@ -278,6 +291,57 @@ def _decode_via_art_cmd(art_cmd: Path, path: Path) -> ReaderDecode:
     )
 
 
+def _decode_via_art_cmd_mxf(art_cmd: Path, path: Path, frame_index: int = 0) -> ReaderDecode:
+    """Decode one frame of MXF-wrapped ARRIRAW via ART-CMD (single-file clip).
+
+    Unlike ``.ari``/``.arx`` (one file per frame, sequence offset computed from
+    the filename), MXF is a single multi-frame file: ``frame_index`` is the
+    0-based intra-clip frame, passed to ART-CMD as ``--start N --duration 1``
+    directly on the file — the RED ``.r3d`` model, not the ARI sequence model.
+    Same decode contract (AP0/D60 scene-linear EXR → ``ACES2065-1``).
+    """
+    if frame_index < 0:
+        raise ValueError(f"frame_index must be >= 0, got {frame_index}")
+    with tempfile.TemporaryDirectory(prefix="forge-io-arri-mxf-") as tmp:
+        tmp_dir = Path(tmp)
+        _run_art_cmd(
+            art_cmd,
+            [
+                "process",
+                "--input",
+                str(path),
+                "--start",
+                str(frame_index),
+                "--duration",
+                "1",
+                "--target-colorspace",
+                _ART_TARGET_COLORSPACE,
+                "--video-codec",
+                _ART_VIDEO_CODEC,
+                "--render-platform",
+                _ART_RENDER_PLATFORM,
+                "--output",
+                str(tmp_dir / "%07d.exr"),
+                "--logpath",
+                "",
+            ],
+            cwd=tmp_dir,
+        )
+        exrs = sorted(tmp_dir.glob("*.exr"))
+        if not exrs:
+            raise ImageDecodeError(path, "art-cmd produced no EXR output")
+        pixels, bits, res, raw = _read_decoded_exr(exrs[0])
+    meta = merge_canonical(None, resolution=res)
+    return ReaderDecode(
+        pixels=pixels,
+        source_colorspace=_ART_SOURCE_COLORSPACE,
+        bit_depth=bits,
+        resolution=res,
+        metadata=meta,
+        raw_header=raw,
+    )
+
+
 def _parse_fraction(s: Any) -> float | None:
     """Parse ART-CMD's fraction strings like ``"24/1"`` or ``"217/15625"``.
 
@@ -390,13 +454,69 @@ def _metadata_via_art_cmd(art_cmd: Path, path: Path) -> ImageMetadata:
     )
 
 
-class ArriRawReader(Reader):
-    """ARRIRAW / HDE container reader (.ari and .arx)."""
+def _metadata_via_art_cmd_mxf(art_cmd: Path, path: Path) -> ImageMetadata:
+    """Export ART-CMD metadata for an MXF-wrapped ARRIRAW clip (single file).
 
-    priority = 5  # before OIIOReader (10)
+    Same ``export --skip-audio --skip-look`` invocation and JSON schema as the
+    ``.ari``/``.arx`` path, but ``--input`` is the file directly (no sequence
+    printf pattern).
+    """
+    with tempfile.TemporaryDirectory(prefix="forge-io-arri-mxf-meta-") as tmp:
+        tmp_dir = Path(tmp)
+        meta_path = tmp_dir / "metadata.json"
+        _run_art_cmd(
+            art_cmd,
+            [
+                "export",
+                "--input",
+                str(path),
+                "--skip-audio",
+                "--skip-look",
+                "--output",
+                str(meta_path),
+                "--logpath",
+                "",
+            ],
+            cwd=tmp_dir,
+        )
+        if not meta_path.is_file():
+            raise ImageDecodeError(path, "art-cmd produced no metadata.json")
+        try:
+            doc = json.loads(meta_path.read_text())
+        except json.JSONDecodeError as e:
+            raise ImageDecodeError(path, f"malformed metadata.json: {e}") from e
+    canonical = _canonical_from_metadata_json(doc)
+    resolution = canonical.get("resolution")
+    return ImageMetadata(
+        colorspace=_ART_SOURCE_COLORSPACE,
+        source_colorspace=_ART_SOURCE_COLORSPACE,
+        bit_depth=16,
+        resolution=resolution,
+        metadata=canonical,
+        raw_header={"art_cmd_export": doc},
+    )
+
+
+class ArriRawReader(Reader):
+    """ARRIRAW reader — ``.ari``/``.arx`` sequences and MXF-wrapped ARRIRAW.
+
+    ``.ari``/``.arx`` are one-file-per-frame sequences; ``.mxf`` is claimed only
+    when essence classification identifies ARRIRAW (ALEXA 35 etc.), decoded as a
+    single multi-frame clip via intra-clip ``frame_index``.
+    """
+
+    priority = 5  # before FFmpegReader (8) and OIIOReader (10)
+
+    def _is_mxf(self, path: Path) -> bool:
+        return path.suffix.lower() == _ARRI_MXF_EXTENSION
 
     def can_read(self, path: Path) -> bool:
-        return path.suffix.lower() in _ARRI_RAW_EXTENSIONS
+        suffix = path.suffix.lower()
+        if suffix in _ARRI_RAW_EXTENSIONS:
+            return True
+        if suffix == _ARRI_MXF_EXTENSION:
+            return _ffmpeg_reader._classify_mxf(path) == _MXF_ARRIRAW
+        return False
 
     def read_header_only(self, path: Path) -> ImageMetadata:
         p = path.expanduser().resolve()
@@ -408,6 +528,8 @@ class ArriRawReader(Reader):
             )
         art = _arri_art_path()
         if art is not None:
+            if self._is_mxf(p):
+                return _metadata_via_art_cmd_mxf(art, p)
             return _metadata_via_art_cmd(art, p)
         raise ArriSdkUnavailableError(_NO_BACKEND_MSG)
 
@@ -421,6 +543,8 @@ class ArriRawReader(Reader):
             )
         art = _arri_art_path()
         if art is not None:
+            if self._is_mxf(p):
+                return _decode_via_art_cmd_mxf(art, p, frame_index=int(opts.get("frame_index", 0)))
             return _decode_via_art_cmd(art, p)
         raise ArriSdkUnavailableError(_NO_BACKEND_MSG)
 

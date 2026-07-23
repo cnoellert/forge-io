@@ -345,13 +345,93 @@ def _metadata_via_ffprobe(ffprobe: Path, path: Path) -> ImageMetadata:
     )
 
 
+# --- MXF essence classification -------------------------------------------
+# `.mxf` is a container, not a codec: it can hold ffmpeg-decodable editorial
+# essence (ProRes/DNxHD/XDCAM), ARRIRAW (ART-CMD), or Sony X-OCN (unsupported).
+# Extension alone can't disambiguate, so `.mxf` is routed by probing essence.
+# Classification is ffprobe-only (deterministic, backend-independent):
+#   - a video stream with a known codec + real dimensions  -> editorial
+#   - else, format tag `company_name` naming ARRI           -> arriraw
+#   - else (Sony X-OCN, empty, corrupt, unknown)            -> unsupported
+_MXF_EDITORIAL = "editorial"
+_MXF_ARRIRAW = "arriraw"
+_MXF_UNSUPPORTED = "unsupported"
+
+
+def _classify_mxf_doc(doc: dict[str, Any]) -> str:
+    """Classify an MXF from a parsed ffprobe document (pure — no subprocess)."""
+    for s in doc.get("streams") or []:
+        if not isinstance(s, dict) or s.get("codec_type") != "video":
+            continue
+        codec = s.get("codec_name")
+        w, h = s.get("width"), s.get("height")
+        if (
+            isinstance(codec, str)
+            and codec not in ("", "unknown")
+            and isinstance(w, int)
+            and isinstance(h, int)
+            and w > 0
+            and h > 0
+        ):
+            return _MXF_EDITORIAL
+    tags = (doc.get("format") or {}).get("tags") or {}
+    company = str(tags.get("company_name") or "")
+    if "arri" in company.lower():
+        return _MXF_ARRIRAW
+    return _MXF_UNSUPPORTED
+
+
+def _classify_mxf(path: Path) -> str:
+    """Probe an `.mxf` with ffprobe and classify its essence.
+
+    Lenient: any failure (no ffprobe, unreadable/empty file, malformed JSON)
+    classifies as ``unsupported`` so dispatch falls through to
+    ``UnsupportedFileError`` rather than raising here.
+    """
+    ffprobe = _ffprobe_path()
+    if ffprobe is None:
+        return _MXF_UNSUPPORTED
+    try:
+        proc = subprocess.run(
+            [
+                str(ffprobe),
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
+                "-show_streams",
+                "-show_format",
+                str(path),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        doc = json.loads(proc.stdout or "{}")
+    except (OSError, json.JSONDecodeError):
+        return _MXF_UNSUPPORTED
+    if not isinstance(doc, dict):
+        return _MXF_UNSUPPORTED
+    return _classify_mxf_doc(doc)
+
+
 class FFmpegReader(Reader):
-    """Editorial/delivery container reader (.mov, .mp4, .m4v, .avi, .mkv)."""
+    """Editorial/delivery container reader (.mov, .mp4, .m4v, .avi, .mkv).
+
+    Also claims ffmpeg-decodable **editorial** ``.mxf`` (ProRes/DNxHD/XDCAM) —
+    routed here by essence classification. ARRIRAW-in-MXF goes to
+    ``ArriRawReader``; Sony X-OCN and unclassifiable MXF stay unsupported.
+    """
 
     priority = 8  # after camera-raw (ARRI 5, RED 6), before OIIO (10)
 
     def can_read(self, path: Path) -> bool:
-        return path.suffix.lower() in _FFMPEG_EXTENSIONS
+        suffix = path.suffix.lower()
+        if suffix in _FFMPEG_EXTENSIONS:
+            return True
+        if suffix == ".mxf":
+            return _classify_mxf(path) == _MXF_EDITORIAL
+        return False
 
     def read_header_only(self, path: Path) -> ImageMetadata:
         p = path.expanduser().resolve()
@@ -377,7 +457,12 @@ __all__ = [
     "FORGE_FFMPEG_PATH_ENV",
     "FORGE_FFPROBE_PATH_ENV",
     "FFmpegReader",
+    "_classify_mxf",
+    "_classify_mxf_doc",
     "_ffmpeg_available",
     "_ffmpeg_path",
     "_ffprobe_path",
+    "_MXF_ARRIRAW",
+    "_MXF_EDITORIAL",
+    "_MXF_UNSUPPORTED",
 ]

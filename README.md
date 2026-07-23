@@ -21,7 +21,7 @@ The published package depends only on **NumPy**; **`import OpenImageIO`** and **
 PyPI redistribution is **deferred** (see project policy). Until then, pin a **git tag**:
 
 ```bash
-pip install "forge-io @ git+https://github.com/cnoellert/forge-io.git@v0.4.0"
+pip install "forge-io @ git+https://github.com/cnoellert/forge-io.git@v0.5.0"
 ```
 
 **Recent highlights:**
@@ -29,6 +29,7 @@ pip install "forge-io @ git+https://github.com/cnoellert/forge-io.git@v0.4.0"
 - `v0.3.1` — Per-frame R3D selection: `read(path, frame_index=N)` forwards to REDline `--start N --end N`. Reader protocol gained `**opts` plumbing.
 - `v0.3.2` — Reader-emitted `source_colorspace` strings switched to OCIO-canonical names: ARRI → `ACES2065-1`, RED → `Linear REDWideGamutRGB`. Decoded pixels unchanged; transforms now resolve in real-world OCIO configs without an `assume_source` translation table.
 - `v0.4.0` — Editorial/delivery container reader (`FFmpegReader`): `.mov` / `.mp4` / `.m4v` / `.avi` / `.mkv` decode via `ffmpeg` + `ffprobe`, frame-accurate (`read(path, frame_index=N)`), `source_colorspace="unknown"`. New `FFmpegUnavailableError`.
+- `v0.5.0` — `.mxf` decode, essence-routed via ffprobe: editorial (ProRes/DNxHD) → `FFmpegReader`; ARRIRAW-in-MXF (ALEXA 35) → `ArriRawReader` single-file path → `ACES2065-1`; Sony X-OCN / unclassifiable → `UnsupportedFileError`.
 
 For private forks, substitute the repo URL; SSH works the same way (`git+ssh://git@github.com/...`). Internal indices (devpi, Artifactory, GitHub Packages) are fine if your org already uses one—this package does not require a specific host.
 
@@ -88,7 +89,7 @@ Where the canonical OCIO config lives (per-project vs machine vs repo) is an **o
 
 EXR, DPX, PNG, JPEG, TIFF via OIIO. ARRIRAW + RED R3D via vendor backends (subprocess today, pybind11 future).
 
-**ARRIRAW (`.ari` and HDE-compressed `.arx`):** a reader is **registered** (before OIIO in the dispatch list) with **two backends**:
+**ARRIRAW (`.ari`, HDE-compressed `.arx`, and MXF-wrapped):** a reader is **registered** (before OIIO in the dispatch list) with **two backends**. It handles two packagings: `.ari/.arx` **sequences** (one file per frame, frame number in the filename) and **single-file MXF-wrapped ARRIRAW** (v0.5.0+, e.g. ALEXA 35 — see the MXF essence-routing note below; decoded via intra-clip `frame_index` like RED `.r3d`, not the sequence path).
 
 1. **ARRI Image SDK (pybind11)** — `FORGE_ARRI_SDK_PATH` points at the SDK shared library; real decode lives in the eventual **forge-io-arri** sibling package. **Pending Partner Program SDK access** — the gate here is currently a coarse `ctypes.CDLL` load only.
 
@@ -128,7 +129,15 @@ forge-io does **not** redistribute the R3D SDK or REDline. The SDK is gated behi
 - **Colorspace:** reported as **`source_colorspace="unknown"`** — same posture as PNG/JPEG/DPX. forge-io does not infer colorspace from container tags or filenames; apply `working_space` with an explicit `assume_source` (e.g. the host segment's colorspace). Raw ffprobe color tags (`color_primaries` / `color_transfer` / `color_space` / `color_range`) are kept in `raw_header`.
 - **Metadata:** canonical `resolution`, `framerate` (`r_frame_rate`), `pixel_aspect` (SAR), `timecode`; source bit depth from `bits_per_raw_sample` (else `pix_fmt`, else 8); frame count + fps + codec in `raw_header`.
 
-**Sony X-OCN:** forge-io does **not** register an `.mxf` reader. X-OCN decode requires [Sony Partner Program](https://pro.sony) SDK access (NDA-gated) or a facility-licensed partner path (e.g. nablet AMA). There is no bundled Sony decode here — use **Sony RAW Viewer's RAW Exporter** (or similar) to transcode X-OCN to EXR/DPX upstream, then read those formats with OIIO. The public type **`SonyUnsupportedError`** documents this policy for downstream code that may raise it when a future optional path is absent. **Note:** `.mxf` is deliberately left off `FFmpegReader` too — it cannot be disambiguated at the extension level between editorial MXF (DNxHD/XDCAM, ffmpeg-decodable) and X-OCN raw. Editorial-MXF support is a future item pending that reconciliation.
+**MXF — essence-routed (v0.5.0+):** `.mxf` is a container, not a codec, so it's the one extension forge-io classifies by **content**. `ffprobe` (deterministic, backend-independent) decides the route:
+
+- video stream with a **known codec + real dimensions** → **editorial** (ProRes/DNxHD/XDCAM) → `FFmpegReader` (same path/contract as `.mov/.mp4`, `source_colorspace="unknown"`);
+- else, format tag **`company_name` naming ARRI** → **ARRIRAW-in-MXF** (e.g. ALEXA 35) → `ArriRawReader` single-file path (`--start N --duration 1`, intra-clip `frame_index`) → **`source_colorspace="ACES2065-1"`**;
+- else (Sony X-OCN carries Sony tags; empty/corrupt has none) → **`UnsupportedFileError`**.
+
+The known-codec check wins first, so an ARRI clip delivered as ProRes routes to ffmpeg, not ART-CMD. Classification lives in `can_read`, so `get_reader` is unchanged and an unclassifiable `.mxf` is claimed by no reader (see Sony note). Requires `ffprobe` for classification; ARRIRAW-MXF decode additionally needs ART-CMD (`FORGE_ARRI_ART_PATH`), same as `.ari/.arx`.
+
+**Sony X-OCN:** forge-io has **no** X-OCN decode path — decode requires [Sony Partner Program](https://pro.sony) SDK access (NDA-gated) or a facility-licensed partner path (e.g. nablet AMA). An X-OCN `.mxf` carries Sony (not ARRI) identity and no ffmpeg-decodable stream, so essence classification routes it to **neither** reader and `get_reader` raises **`UnsupportedFileError`** (the policy is preserved, now essence-based rather than a blanket `.mxf` exclusion). Transcode X-OCN to EXR/DPX upstream with **Sony RAW Viewer's RAW Exporter** (or similar), then read those with OIIO. The public type **`SonyUnsupportedError`** documents this policy for downstream code that may raise it when a future optional path is absent.
 
 **CinemaDNG (`.dng`):** forge-io routes `.dng` through **`OIIOReader`** → OpenImageIO → **LibRaw** (or the Adobe DNG SDK path) when the build includes a raw/DNG input plugin. ASWF **`ci-vfxall`** images used in CI ship that stack. **LibRaw version bumps can change decoded pixels** for real camera Bayer DNGs; pin versions in production and consider **[`rawtoaces`](https://github.com/AcademySoftwareFoundation/rawtoaces)** for ACES pipelines. The committed test fixture **`solid_rgb.dng`** is intentionally a **small TIFF float RGB bitstream** under a `.dng` suffix (≤ 1 KiB) so CI stays deterministic; it does **not** exercise LibRaw demosaic variance — add a separate golden when a tiny Bayer sample is available.
 

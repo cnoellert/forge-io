@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## v0.5.0
+
+**MXF decode — editorial (ffmpeg) + ARRIRAW-in-MXF (ART-CMD), essence-routed.**
+
+v0.4.0 deliberately excluded `.mxf` because the extension alone can't tell editorial essence from camera-raw. v0.5.0 resolves this by **classifying MXF essence with ffprobe** and dispatching accordingly — restoring a capability forge-align previously had (and unblocking a real ALEXA 35 ARRIRAW-in-MXF facility workflow that nothing decoded).
+
+- **Essence classification** (`ffmpeg_reader._classify_mxf`, ffprobe-only, deterministic, backend-independent):
+  - a video stream with a **known codec + real dimensions** → **editorial** (ProRes/DNxHD/XDCAM) → `FFmpegReader`;
+  - else, format tag **`company_name` naming ARRI** → **ARRIRAW** → `ArriRawReader`;
+  - else (Sony X-OCN carries Sony tags; empty/corrupt has none) → **`UnsupportedFileError`**.
+  - The known-codec check wins first, so an ARRI clip delivered as ProRes routes to ffmpeg, not ART-CMD.
+- **Editorial MXF** needs no new decode code — `FFmpegReader`'s existing codec-agnostic ffmpeg path handles it; `.mxf` is claimed via classification in `can_read`. Reports `source_colorspace="unknown"`, same as `.mov/.mp4`.
+- **ARRIRAW-in-MXF** is a **single multi-frame file**, unlike `.ari/.arx` sequences (one file per frame). `ArriRawReader` gains a single-file decode path (`--start N --duration 1` on the file directly, driven by intra-clip `frame_index` — the RED `.r3d` model) and a matching single-file metadata path. Same decode contract as `.ari/.arx`: `--target-colorspace AP0/D60/linear` → **`source_colorspace="ACES2065-1"`**. Negative `frame_index` raises `ValueError`.
+- **Dispatch** stays extension-first; `.mxf` is the one content-classified extension. `get_reader` is unchanged — readers claim `.mxf` in `can_read` only when classification matches, so an unclassifiable/X-OCN `.mxf` is claimed by no reader and still raises `UnsupportedFileError` (the Sony policy is preserved, now essence-based rather than blanket).
+- Verified end-to-end against a real 4608×3164 ALEXA 35 ARRIRAW-MXF (LogC4, ~23 GB): decodes to ACES2065-1 scene-linear, metadata `resolution=(4608,3164)`, `framerate=24000/1001`.
+- Requires ffprobe for MXF classification (part of the same ffmpeg toolchain v0.4.0 already needs). ART-CMD (`FORGE_ARRI_ART_PATH`) is required to *decode* ARRIRAW-MXF, same as `.ari/.arx`.
+
+Non-breaking: no change to existing `.mov/.mp4`, OIIO, RED, or `.ari/.arx` reads, or to `read()` / `read_metadata()` signatures.
+
 ## v0.4.0
 
 **Editorial/delivery container reader (ffmpeg) — `.mov` / `.mp4` / `.m4v` / `.avi` / `.mkv`.**

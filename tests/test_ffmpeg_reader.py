@@ -14,9 +14,13 @@ from forge_io._registry import get_reader
 from forge_io.exceptions import FFmpegUnavailableError
 from forge_io.readers import ffmpeg_reader
 from forge_io.readers.ffmpeg_reader import (
+    _MXF_ARRIRAW,
+    _MXF_EDITORIAL,
+    _MXF_UNSUPPORTED,
     FORGE_FFMPEG_PATH_ENV,
     FORGE_FFPROBE_PATH_ENV,
     FFmpegReader,
+    _classify_mxf_doc,
     _ffmpeg_available,
     _ffmpeg_path,
     _ffprobe_path,
@@ -215,6 +219,53 @@ def test_canonical_and_raw_raises_without_video_stream() -> None:
         ffmpeg_reader._canonical_and_raw({"streams": [{"codec_type": "audio"}]}, Path("x.mov"))
 
 
+# ---------- MXF essence classification (unit, no subprocess) --------------
+
+
+def test_classify_mxf_doc_editorial_known_codec() -> None:
+    for codec in ("prores", "dnxhd", "mpeg2video"):
+        doc = {
+            "streams": [
+                {"codec_type": "video", "codec_name": codec, "width": 1920, "height": 1080}
+            ]
+        }
+        assert _classify_mxf_doc(doc) == _MXF_EDITORIAL
+
+
+def test_classify_mxf_doc_arriraw_by_company_tag() -> None:
+    # ARRIRAW ffprobe signature: unknown codec, 0x0 dims, but ARRI company tag.
+    doc = {
+        "streams": [{"codec_type": "video", "codec_name": "unknown", "width": 0, "height": 0}],
+        "format": {"tags": {"company_name": "ARRI", "product_name": "ALEXA 35"}},
+    }
+    assert _classify_mxf_doc(doc) == _MXF_ARRIRAW
+
+
+def test_classify_mxf_doc_editorial_wins_over_arri_company() -> None:
+    """An ARRI clip in ProRes (known codec) is editorial (ffmpeg), not ARRIRAW."""
+    doc = {
+        "streams": [{"codec_type": "video", "codec_name": "prores", "width": 4608, "height": 3164}],
+        "format": {"tags": {"company_name": "ARRI"}},
+    }
+    assert _classify_mxf_doc(doc) == _MXF_EDITORIAL
+
+
+def test_classify_mxf_doc_sony_xocn_unsupported() -> None:
+    doc = {
+        "streams": [{"codec_type": "video", "codec_name": "unknown", "width": 0, "height": 0}],
+        "format": {"tags": {"company_name": "Sony", "product_name": "VENICE"}},
+    }
+    assert _classify_mxf_doc(doc) == _MXF_UNSUPPORTED
+
+
+def test_classify_mxf_doc_empty_and_audio_only_unsupported() -> None:
+    assert _classify_mxf_doc({}) == _MXF_UNSUPPORTED
+    assert _classify_mxf_doc({"streams": [{"codec_type": "audio"}]}) == _MXF_UNSUPPORTED
+    # Zero-dim video with no company tag (corrupt) is unsupported, not editorial.
+    doc = {"streams": [{"codec_type": "video", "codec_name": "unknown", "width": 0, "height": 0}]}
+    assert _classify_mxf_doc(doc) == _MXF_UNSUPPORTED
+
+
 # ---------- live ffmpeg end-to-end (skipped without ffmpeg) --------------
 
 
@@ -301,3 +352,32 @@ def test_live_h264_long_gop_frame_accuracy(tmp_path: Path) -> None:
         # The nearest original frame color to the decoded frame must be frame n.
         nearest = min(range(_FRAME_COUNT), key=lambda k: abs(_frame_color(k)[0] - decoded_r))
         assert nearest == n, f"frame_index={n} decoded closest to frame {nearest}"
+
+
+def _make_editorial_mxf(ffmpeg: Path, tmp_path: Path) -> Path:
+    out = tmp_path / "editorial.mxf"
+    subprocess.run(
+        [
+            str(ffmpeg), "-y", "-nostdin", "-loglevel", "error",
+            "-f", "lavfi", "-i", "testsrc=size=320x240:rate=24:duration=1",
+            "-c:v", "prores_ks", "-profile:v", "3", "-f", "mxf", str(out),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return out
+
+
+def test_live_editorial_mxf_dispatches_and_decodes(tmp_path: Path) -> None:
+    """A ProRes-in-MXF is classified editorial, routed to FFmpegReader, and decodes."""
+    ffmpeg, _ffprobe = _ffmpeg_or_skip()
+    clip = _make_editorial_mxf(ffmpeg, tmp_path)
+    # Real ffprobe classification drives dispatch here (no monkeypatch).
+    assert isinstance(get_reader(clip.resolve()), FFmpegReader)
+    img = read(clip, frame_index=3)
+    assert img.pixels.dtype == np.float32
+    assert img.pixels.ndim == 3 and img.pixels.shape[2] == 3
+    assert img.source_colorspace == "unknown"
+    meta = read_metadata(clip)
+    assert meta.resolution == (320, 240)
+    assert meta.source_colorspace == "unknown"
